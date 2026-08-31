@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "name": "templ8c",
+  "github": "https://github.com/SuperMarioYL/templ8c",
+  "host": "templ8c.lei6393.com",
+  "lang": { "primary": "zh", "toggle": true },
+  "accent": ["#7c5cff", "#3b9eff", "#2ee5c8"],
+  "hero": {
+    "eyebrow": { "zh": "国产模型 · 部署前检查 · 一条命令", "en": "CN models · pre-deploy check · one command" },
+    "headline": { "zh": "部署前就知道\n你的 chat template 对不对", "en": "Know before deploy\nif your chat template is right" },
+    "sub": { "zh": "每次 GLM/Qwen/DeepSeek 发布，inference server 的 chat template 可能悄悄变了。templ8c 在部署前渲染模板、检查 tool-call 格式，PASS 才上线。", "en": "Every GLM/Qwen/DeepSeek release, your inference server's chat template may have silently changed. templ8c renders the template and checks tool-call format before deploy — PASS means ship." },
+    "command": "templ8c check --model glm-5.3",
+    "cta": { "zh": "查看 GitHub", "en": "View on GitHub" },
+    "ctaGithub": { "zh": "⭐ Star", "en": "⭐ Star" },
+    "scroll": { "zh": "向下滚动", "en": "Scroll down" }
+  },
+  "advantages": [
+    {
+      "title": { "zh": "部署前就发现问题", "en": "Catch it before deploy" },
+      "body": { "zh": "不需要跑完整推理才知道 template 错了。templ8c 渲染 chat template，逐字段检查 tool-call JSON 格式，直接告诉你哪里不一致。", "en": "No need to run full inference to find out the template is wrong. templ8c renders the chat template and checks tool-call JSON format field by field, telling you exactly what's mismatched." },
+      "chips": ["› GLM-5.3", "› Qwen3.8", "› DeepSeek-V4"]
+    },
+    {
+      "title": { "zh": "内置三家模型参考模板", "en": "Bundled reference templates for 3 model families" },
+      "body": { "zh": "每个模型家族的 role 标记和 tool-call wrapper 都不一样。templ8c 内置了 GLM、Qwen、DeepSeek 的参考模板和一致性规范，开箱即用。", "en": "Each model family has different role markers and tool-call wrappers. templ8c bundles reference templates and conformance specs for GLM, Qwen, and DeepSeek — ready out of the box." },
+      "chips": ["› role markers", "› tool-call JSON", "› Jinja2"]
+    },
+    {
+      "title": { "zh": "一条命令，终端看结果", "en": "One command, terminal output" },
+      "body": { "zh": "templ8c check 一条命令跑完所有检查，PASS/FAIL 表格直接显示在终端。FAIL 时给出具体字段差异，不用翻日志。", "en": "One templ8c check command runs all checks; PASS/FAIL table shows right in the terminal. On FAIL, it gives you the specific field diff — no log digging." },
+      "chips": ["› PASS/FAIL table", "› field-level diff", "› exit code 1"]
+    }
+  ],
+  "scene": { "kind": "particle-field" },
+  "cta": {
+    "headline": { "zh": "下次模型发布，先查再上", "en": "Next model drop? Check before you ship" },
+    "sub": { "zh": "MIT 开源 · Python 3.12+ · 一条 pip install", "en": "MIT open source · Python 3.12+ · one pip install" },
+    "button": { "zh": "GitHub 仓库", "en": "GitHub repo" }
+  },
+  "footer": { "tag": { "zh": "MIT © 2026 SuperMarioYL", "en": "MIT © 2026 SuperMarioYL" } }
+}
