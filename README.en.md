@@ -1,104 +1,126 @@
-<div align="right"><sub><b>English</b>&nbsp;&nbsp;⇄&nbsp;&nbsp;<a href="./README.md">简体中文</a></sub></div>
+[简体中文](./README.md) · [Website](https://templ8c.lei6393.com) · [GitHub](https://github.com/SuperMarioYL/templ8c)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg">
-  <img src="./assets/hero-light.svg" width="880" alt="templ8c — chat-template conformance checker">
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/hero-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/hero-dark.svg">
+  <img src="./assets/presentation/hero-light.svg" width="960" alt="Hero diagram">
 </picture>
 
-<p align="center"><sub>The conformance checker that catches chat-template tool-call mismatches before CN model deployment.</sub></p>
+# templ8c
 
-<p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/SuperMarioYL/templ8c" alt="license"></a>
-  <a href="https://github.com/SuperMarioYL/templ8c/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/templ8c" alt="release"></a>
-  <a href="https://github.com/SuperMarioYL/templ8c/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SuperMarioYL/templ8c/ci.yml?label=ci" alt="CI"></a>
-  <img src="https://img.shields.io/static/v1?label=python&message=3.12%2B&color=306998" alt="python">
-</p>
+**Check chat-template structure before serving**
 
-> One command before deployment verifies the tool-call format of a chat template — PASS/FAIL + structured diff that pinpoints where the template diverges from the reference spec.
+templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Its bundled templates demonstrate the checker’s own contracts.
 
-<h2><img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Architecture</h2>
+## Why use it
+
+A template change can alter the text surrounding a tool call while leaving the application code unchanged. Keeping message examples and expected markers together makes that structural drift visible in a repeatable local check.
+
+- **Exercise multiple roles** — Canonical cases include system/user messages, tool calls and multi-turn output.
+- **Name the missing field** — Each diff includes the field, expected marker, observed text and PASS/FAIL.
+- **Read local configs** — TemplateLoader extracts chat_template from tokenizer_config.json for check_source.
+
+## Architecture
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
-  <img src="./assets/atlas-light.svg" width="880" alt="architecture: CLI to Checker to TemplateLoader and Renderer to Comparator, fed by ConformanceSpec">
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/architecture-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/architecture-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/architecture-dark.svg">
+  <img src="./assets/presentation/architecture-light.svg" width="960" alt="Architecture diagram">
 </picture>
 
-Single process, single CLI entry point. `Checker` loads the Jinja2 chat template (from `tokenizer_config.json` or a bundled reference), renders it with canonical test messages, then `Comparator` diffs the output against a `ConformanceSpec` field by field and emits a `TemplateDiff` list. Without `--server` it checks the template's own rendering; the ServerProbe (m3) later wires in live vLLM/SGLang probing.
+ConformanceSpec owns role markers, tool-call expectations and canonical cases. TemplateLoader reads a bundled template or a selected source. Renderer supplies a Jinja environment; Comparator checks marker/wrapper/name presence, and Checker assembles field-level results.
 
-The core primitive is **ConformanceSpec** — a declarative data structure that defines "what tool-call format a given model's chat template should produce", turning the implicit knowledge scattered across docs and GitHub issues into an explicit, executable spec.
+| Component | Responsibility |
+| --- | --- |
+| `ConformanceSpec` | markers and message cases |
+| `TemplateLoader` | Jinja source |
+| `Renderer` | canonical message outputs |
+| `Comparator` | field-level PASS / FAIL |
 
-<h2><img src="https://api.iconify.design/tabler:bulb.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Why this exists</h2>
+## Install and quickstart
 
-CN model releases (GLM-5.3-Flash, Qwen3.8-Flash-Next, DeepSeek-V4) have compressed from a quarterly to a weekly/biweekly cadence, and each release may update the chat template. Inference servers (vLLM, SGLang, llama.cpp) load the template as a config file and never validate whether it is "correct" — because "correct" needs a reference to compare against, and the server is itself the thing being checked: it cannot be both referee and player. The result is silent tool-calling failure: the tool-call JSON the model emits does not match the format the server expects, the agent pipeline breaks, and no pre-deployment checker catches it. templ8c closes that gap — confirm the template adaptation is right within minutes of a release, instead of debugging by hand after the agent crashes.
-
-<h2><img src="https://api.iconify.design/tabler:rocket.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Quickstart</h2>
-
-```bash
-pip install templ8c
-templ8c check --model glm-5.3-flash
-# PASS/FAIL + structured diff showing where the template diverges from the reference spec
-```
-
-<details><summary>sample output</summary>
-
-```
-templ8c v0.1.0 — chat template conformance checker
-Model: glm-5.3
-Template source: bundled reference (tokenizer_config.json)
-
-  Field              Expected        Actual       Status
-  system_marker      role token      found        PASS
-  user_marker        role token      found        PASS
-  tool_call_wrapper  [CALL_TOOL]     found        PASS
-  tool_call_schema   get_weather     all present  PASS
-  assistant_marker   role token      found        PASS
-  tool_call_wrapper  [CALL_TOOL]     found        PASS
-  tool_call_schema   get_weather     all present  PASS
-  tool_marker        role token      found        PASS
-
-PASS: all fields conform to the reference spec.
-```
-</details>
-
-<h2><img src="https://api.iconify.design/tabler:terminal-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Usage</h2>
+Python 3.12+ and uv. No model weights or inference server are required for template checks.
 
 ```bash
-# Render a single message through a model's chat template
-templ8c render --model glm-5.3-flash --message "What's the weather in SF?"
-
-# Conformance check (m1 checks the template rendering itself)
-templ8c check --model qwen3.8
-
-# List supported model families
-templ8c models
+git clone https://github.com/SuperMarioYL/templ8c.git
+cd templ8c
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -e .
 ```
 
-Programmatic API in [`examples/render_example.py`](./examples/render_example.py):
+The example creates a local tokenizer_config.json from the bundled qwen3.8 template, loads it through the actual loader and repeats the check after removing the expected wrapper. No upstream template is downloaded.
 
-```python
-from templ8c.checker import Checker
-
-checker = Checker()
-print(checker.render("glm-5.3-flash", "What's the weather in SF?"))
-result = checker.check("glm-5.3-flash")
-print(result.passed, result.failed_count)
+```bash
+.venv/bin/python examples/presentation_demo.py
 ```
 
-<h2><img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo</h2>
+## Recorded demo
 
-![demo](assets/demo.gif)
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/process-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/process-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/process-dark.svg">
+  <img src="./assets/presentation/process-light.svg" width="960" alt="Process diagram">
+</picture>
 
-<h2><img src="https://api.iconify.design/tabler:map-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Roadmap</h2>
+Ten checks pass for the bundled example; removing its wrapper creates two failing fields.
 
-- [x] **m1** — load and render chat templates (GLM-5.3 / Qwen3.8 / DeepSeek-V4) + ConformanceSpec / comparator, PASS/FAIL + structured diff
-- [ ] **m2** — per-model spec files + rich colored diff output
-- [ ] **m3** — ServerProbe: live-probe the server-rendered template via vLLM / SGLang API
-- [ ] future — CI/CD integration (GitHub Action step), more CN models and inference servers
+```text
+{"input": "bundled example", "passed": true, "checks": 10, "failed_fields": []}
+{"input": "wrapper removed", "passed": false, "checks": 10, "failed_fields": ["tool_call_wrapper", "tool_call_wrapper"]}
+Scope: repository-authored reference templates; no upstream model release or inference server tested.
+```
 
-<h2><img src="https://api.iconify.design/tabler:license.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> License</h2>
+The complete command and output are recorded in [docs/demo-results.json](./docs/demo-results.json). Inputs and reproduction code are included in the repository.
 
-MIT — see [`LICENSE`](./LICENSE). Issues and PRs welcome.
+![Existing terminal recording](./assets/demo.gif)
 
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+The existing recording is retained for context; the text example above documents the reproducible scenario.
+
+## Usage
+
+The CLI model IDs select repository-defined families and aliases. For a local artifact in Python, source = TemplateLoader().load_from_tokenizer_config("tokenizer_config.json"), followed by Checker().check_source("qwen3.8", source). Read result.diffs and result.failed_count; update the specification only when you have an authoritative reason to change the expected contract.
+
+```bash
+.venv/bin/templ8c models
+.venv/bin/templ8c render --model qwen3.8 --message "请查询天气。"
+.venv/bin/templ8c check --model qwen3.8
+```
+
+## Configuration
+
+Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server prints a notice and still checks the bundled template.
+
+## Integrations and responsibilities
+
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/integrations-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/integrations-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/integrations-dark.svg">
+  <img src="./assets/presentation/integrations-light.svg" width="960" alt="Integrations diagram">
+</picture>
+
+The default check command compares a repository-authored reference with its matching repository spec. To inspect a real model artifact, load its actual tokenizer_config.json and call check_source. A successful bundled check is not verification of an upstream model release.
+
+| Route | Implemented role |
+| --- | --- |
+| Jinja source | render canonical messages |
+| tokenizer_config.json | local template extraction |
+| HF / ModelScope | explicit remote loader methods |
+| Python API | check_source for custom templates |
+| CLI | render / check / models |
+
+## Limits and next steps
+
+- The comparator primarily checks substring presence. It does not parse all tool JSON semantics or prove template equivalence.
+- Bundled specs and family names are repository fixtures, not verified upstream contracts.
+- Inference-server probes are not implemented. A template PASS says nothing about live tool-call quality.
+
+Implemented: local rendering, reference contracts, source loaders and field-level comparison. Future directions include validated upstream references, deeper structural comparison and actual inference-server probes.
+
+## License and contributions
+
+See [LICENSE](./LICENSE). When reporting an issue, include a minimal input, the command, and the observed output.

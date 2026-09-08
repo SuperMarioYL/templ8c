@@ -1,0 +1,86 @@
+{
+  "name": "templ8c",
+  "tagline": "Check chat-template structure before serving",
+  "architecture": {
+    "title": "Load a template, render cases, compare markers",
+    "nodes": [
+      {
+        "title": "ConformanceSpec",
+        "detail": "markers and message cases"
+      },
+      {
+        "title": "TemplateLoader",
+        "detail": "Jinja source"
+      },
+      {
+        "title": "Renderer",
+        "detail": "canonical message outputs"
+      },
+      {
+        "title": "Comparator",
+        "detail": "field-level PASS / FAIL"
+      }
+    ],
+    "edges": [
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        0,
+        3
+      ]
+    ]
+  },
+  "process": {
+    "title": "From input to a useful result",
+    "steps": [
+      {
+        "title": "Load local JSON",
+        "detail": "bundled template as input"
+      },
+      {
+        "title": "Check reference",
+        "detail": "10 checks pass"
+      },
+      {
+        "title": "Remove wrapper",
+        "detail": "tool_call_wrapper fails"
+      }
+    ],
+    "result": "Ten checks pass for the bundled example; removing its wrapper creates two failing fields."
+  },
+  "integrations": {
+    "title": "Supported input and output routes",
+    "items": [
+      {
+        "title": "Jinja source",
+        "detail": "render canonical messages"
+      },
+      {
+        "title": "tokenizer_config.json",
+        "detail": "local template extraction"
+      },
+      {
+        "title": "HF / ModelScope",
+        "detail": "explicit remote loader methods"
+      },
+      {
+        "title": "Python API",
+        "detail": "check_source for custom templates"
+      },
+      {
+        "title": "CLI",
+        "detail": "render / check / models"
+      }
+    ]
+  }
+}

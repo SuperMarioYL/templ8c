@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source_revision": "dff5fd76fa72da0cb553e0227e53df5fa2820dc1",
+  "scope": "Bundled reference template loaded through local tokenizer_config JSON and compared before/after a deliberate wrapper removal.",
+  "steps": [
+    {
+      "label": "Recorded run",
+      "body": "Bundled reference template loaded through local tokenizer_config JSON and compared before/after a deliberate wrapper removal.",
+      "command": ".venv/bin/python examples/presentation_demo.py",
+      "output": "{\"input\": \"bundled example\", \"passed\": true, \"checks\": 10, \"failed_fields\": []}\n{\"input\": \"wrapper removed\", \"passed\": false, \"checks\": 10, \"failed_fields\": [\"tool_call_wrapper\", \"tool_call_wrapper\"]}\nScope: repository-authored reference templates; no upstream model release or inference server tested."
+    }
+  ]
+}

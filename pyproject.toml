@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "templ8c"
 version = "0.1.0"
-description = "Chat-template conformance checker for CN model releases (GLM-5.3, Qwen3.8, DeepSeek-V4)."
+description = "Render Jinja chat templates and compare role markers and tool-call fields against repository-defined conformance specifications."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

@@ -1,41 +1,215 @@
 {
-  "schema": 1,
+  "schema": 3,
   "name": "templ8c",
   "github": "https://github.com/SuperMarioYL/templ8c",
   "host": "templ8c.lei6393.com",
-  "lang": { "primary": "zh", "toggle": true },
-  "accent": ["#7c5cff", "#3b9eff", "#2ee5c8"],
+  "palette": "auto",
+  "lang": {
+    "primary": "en",
+    "toggle": true
+  },
+  "meta": {
+    "visual_style": "neon-particle",
+    "demo_source": "docs/demo-results.json"
+  },
   "hero": {
-    "eyebrow": { "zh": "国产模型 · 部署前检查 · 一条命令", "en": "CN models · pre-deploy check · one command" },
-    "headline": { "zh": "部署前就知道\n你的 chat template 对不对", "en": "Know before deploy\nif your chat template is right" },
-    "sub": { "zh": "每次 GLM/Qwen/DeepSeek 发布，inference server 的 chat template 可能悄悄变了。templ8c 在部署前渲染模板、检查 tool-call 格式，PASS 才上线。", "en": "Every GLM/Qwen/DeepSeek release, your inference server's chat template may have silently changed. templ8c renders the template and checks tool-call format before deploy — PASS means ship." },
-    "command": "templ8c check --model glm-5.3",
-    "cta": { "zh": "查看 GitHub", "en": "View on GitHub" },
-    "ctaGithub": { "zh": "⭐ Star", "en": "⭐ Star" },
-    "scroll": { "zh": "向下滚动", "en": "Scroll down" }
+    "headline": {
+      "en": "Check chat-template structure before serving",
+      "zh": "服务启动前，检查对话模板结构"
+    },
+    "sub": {
+      "en": "templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Its bundled templates demonstrate the checker’s own contracts.",
+      "zh": "templ8c 将标准消息序列交给 Jinja 对话模板渲染，再检查预期角色标记、工具包装符和字段名。内置模板用于演示检查器自身的约定。"
+    },
+    "href": "#quickstart"
   },
   "advantages": [
     {
-      "title": { "zh": "部署前就发现问题", "en": "Catch it before deploy" },
-      "body": { "zh": "不需要跑完整推理才知道 template 错了。templ8c 渲染 chat template，逐字段检查 tool-call JSON 格式，直接告诉你哪里不一致。", "en": "No need to run full inference to find out the template is wrong. templ8c renders the chat template and checks tool-call JSON format field by field, telling you exactly what's mismatched." },
-      "chips": ["› GLM-5.3", "› Qwen3.8", "› DeepSeek-V4"]
+      "title": {
+        "en": "Exercise multiple roles",
+        "zh": "覆盖多种角色"
+      },
+      "body": {
+        "en": "Canonical cases include system/user messages, tool calls and multi-turn output.",
+        "zh": "标准样本包括 system、user、工具调用与多轮输出。"
+      }
     },
     {
-      "title": { "zh": "内置三家模型参考模板", "en": "Bundled reference templates for 3 model families" },
-      "body": { "zh": "每个模型家族的 role 标记和 tool-call wrapper 都不一样。templ8c 内置了 GLM、Qwen、DeepSeek 的参考模板和一致性规范，开箱即用。", "en": "Each model family has different role markers and tool-call wrappers. templ8c bundles reference templates and conformance specs for GLM, Qwen, and DeepSeek — ready out of the box." },
-      "chips": ["› role markers", "› tool-call JSON", "› Jinja2"]
+      "title": {
+        "en": "Name the missing field",
+        "zh": "指出缺失字段"
+      },
+      "body": {
+        "en": "Each diff includes the field, expected marker, observed text and PASS/FAIL.",
+        "zh": "每项差异包含字段、预期标记、观察文本和 PASS/FAIL。"
+      }
     },
     {
-      "title": { "zh": "一条命令，终端看结果", "en": "One command, terminal output" },
-      "body": { "zh": "templ8c check 一条命令跑完所有检查，PASS/FAIL 表格直接显示在终端。FAIL 时给出具体字段差异，不用翻日志。", "en": "One templ8c check command runs all checks; PASS/FAIL table shows right in the terminal. On FAIL, it gives you the specific field diff — no log digging." },
-      "chips": ["› PASS/FAIL table", "› field-level diff", "› exit code 1"]
+      "title": {
+        "en": "Read local configs",
+        "zh": "读取本地配置"
+      },
+      "body": {
+        "en": "TemplateLoader extracts chat_template from tokenizer_config.json for check_source.",
+        "zh": "TemplateLoader 从 tokenizer_config.json 提取 chat_template，供 check_source 检查。"
+      }
     }
   ],
-  "scene": { "kind": "particle-field" },
-  "cta": {
-    "headline": { "zh": "下次模型发布，先查再上", "en": "Next model drop? Check before you ship" },
-    "sub": { "zh": "MIT 开源 · Python 3.12+ · 一条 pip install", "en": "MIT open source · Python 3.12+ · one pip install" },
-    "button": { "zh": "GitHub 仓库", "en": "GitHub repo" }
+  "demo": {
+    "title": {
+      "en": "Run it on a complete example",
+      "zh": "运行完整示例"
+    },
+    "note": {
+      "en": "The example creates a local tokenizer_config.json from the bundled qwen3.8 template, loads it through the actual loader and repeats the check after removing the expected wrapper. No upstream template is downloaded.",
+      "zh": "示例基于内置 qwen3.8 模板创建本地 tokenizer_config.json，经实际加载器读取，再移除预期包装符重新检查。不下载上游模板。"
+    },
+    "source": "https://github.com/SuperMarioYL/templ8c/blob/main/docs/demo-results.json",
+    "steps": [
+      {
+        "label": "Recorded run",
+        "body": "Bundled reference template loaded through local tokenizer_config JSON and compared before/after a deliberate wrapper removal.",
+        "command": ".venv/bin/python examples/presentation_demo.py",
+        "output": "{\"input\": \"bundled example\", \"passed\": true, \"checks\": 10, \"failed_fields\": []}\n{\"input\": \"wrapper removed\", \"passed\": false, \"checks\": 10, \"failed_fields\": [\"tool_call_wrapper\", \"tool_call_wrapper\"]}\nScope: repository-authored reference templates; no upstream model release or inference server tested.",
+        "image": "/assets/presentation/demo-0-light.svg",
+        "imageDark": "/assets/presentation/demo-0-dark.svg"
+      }
+    ]
   },
-  "footer": { "tag": { "zh": "MIT © 2026 SuperMarioYL", "en": "MIT © 2026 SuperMarioYL" } }
+  "quickstart": {
+    "title": {
+      "en": "Try it locally",
+      "zh": "本地上手"
+    },
+    "body": {
+      "en": "The example creates a local tokenizer_config.json from the bundled qwen3.8 template, loads it through the actual loader and repeats the check after removing the expected wrapper. No upstream template is downloaded.",
+      "zh": "示例基于内置 qwen3.8 模板创建本地 tokenizer_config.json，经实际加载器读取，再移除预期包装符重新检查。不下载上游模板。"
+    },
+    "steps": [
+      {
+        "title": {
+          "en": "Install from source",
+          "zh": "从源码安装"
+        },
+        "code": "git clone https://github.com/SuperMarioYL/templ8c.git\ncd templ8c\nuv venv --python 3.12\nsource .venv/bin/activate\nuv pip install -e ."
+      },
+      {
+        "title": {
+          "en": "Run the included example",
+          "zh": "运行随仓示例"
+        },
+        "code": ".venv/bin/python examples/presentation_demo.py"
+      }
+    ]
+  },
+  "limitations": [
+    {
+      "en": "The comparator primarily checks substring presence. It does not parse all tool JSON semantics or prove template equivalence.",
+      "zh": "比较器主要检查子串是否出现，不解析全部工具 JSON 语义，也不证明模板等价。"
+    },
+    {
+      "en": "Bundled specs and family names are repository fixtures, not verified upstream contracts.",
+      "zh": "内置规范与系列名称是仓库样本，不是已经验证的上游约定。"
+    },
+    {
+      "en": "Inference-server probes are not implemented. A template PASS says nothing about live tool-call quality.",
+      "zh": "推理服务探测尚未实现。模板 PASS 不能说明在线工具调用质量。"
+    }
+  ],
+  "scene": {
+    "kind": "neon-graph",
+    "fallback": "/assets/presentation/scene-dark.svg",
+    "fallbackLight": "/assets/presentation/scene-light.svg"
+  },
+  "story": {
+    "intro": {
+      "title": {
+        "en": "A concrete task",
+        "zh": "从实际任务出发"
+      },
+      "body": {
+        "en": "A template change can alter the text surrounding a tool call while leaving the application code unchanged. Keeping message examples and expected markers together makes that structural drift visible in a repeatable local check.",
+        "zh": "模板改动可能在应用代码未变时改变工具调用周围的文本。把消息样本与预期标记放在一起，可通过可重复本地检查发现结构差异。"
+      }
+    },
+    "sections": [
+      {
+        "title": {
+          "en": "Follow the operation",
+          "zh": "处理过程"
+        },
+        "body": {
+          "en": "ConformanceSpec owns role markers, tool-call expectations and canonical cases. TemplateLoader reads a bundled template or a selected source. Renderer supplies a Jinja environment; Comparator checks marker/wrapper/name presence, and Checker assembles field-level results.",
+          "zh": "ConformanceSpec 定义角色标记、工具调用要求和标准样本。TemplateLoader 读取内置模板或所选来源，Renderer 提供 Jinja 环境，Comparator 检查标记、包装符和名称是否出现，Checker 汇总字段级结果。"
+        },
+        "image": {
+          "light": "/assets/presentation/process-light.svg",
+          "dark": "/assets/presentation/process-dark.svg",
+          "alt": {
+            "en": "Follow the operation",
+            "zh": "处理过程"
+          }
+        }
+      },
+      {
+        "title": {
+          "en": "Load a template, render cases, compare markers",
+          "zh": "加载模板、渲染样本、比较标记"
+        },
+        "body": {
+          "en": "ConformanceSpec owns role markers, tool-call expectations and canonical cases. TemplateLoader reads a bundled template or a selected source. Renderer supplies a Jinja environment; Comparator checks marker/wrapper/name presence, and Checker assembles field-level results.",
+          "zh": "ConformanceSpec 定义角色标记、工具调用要求和标准样本。TemplateLoader 读取内置模板或所选来源，Renderer 提供 Jinja 环境，Comparator 检查标记、包装符和名称是否出现，Checker 汇总字段级结果。"
+        },
+        "image": {
+          "light": "/assets/presentation/architecture-light.svg",
+          "dark": "/assets/presentation/architecture-dark.svg",
+          "alt": {
+            "en": "Load a template, render cases, compare markers",
+            "zh": "加载模板、渲染样本、比较标记"
+          }
+        }
+      },
+      {
+        "title": {
+          "en": "Connect the pieces",
+          "zh": "输入与输出"
+        },
+        "body": {
+          "en": "The default check command compares a repository-authored reference with its matching repository spec. To inspect a real model artifact, load its actual tokenizer_config.json and call check_source. A successful bundled check is not verification of an upstream model release.",
+          "zh": "默认 check 将仓库编写的参考模板与配套规范比较。检查真实模型产物时，应加载其实际 tokenizer_config.json 并调用 check_source。内置检查成功不代表验证了上游模型版本。"
+        },
+        "image": {
+          "light": "/assets/presentation/integrations-light.svg",
+          "dark": "/assets/presentation/integrations-dark.svg",
+          "alt": {
+            "en": "Connect the pieces",
+            "zh": "输入与输出"
+          }
+        }
+      }
+    ],
+    "details": [
+      {
+        "title": {
+          "en": "Configuration",
+          "zh": "配置"
+        },
+        "body": {
+          "en": "Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server prints a notice and still checks the bundled template.",
+          "zh": "规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。--server 仅打印提示，仍检查内置模板。"
+        }
+      },
+      {
+        "title": {
+          "en": "Further use",
+          "zh": "进一步使用"
+        },
+        "body": {
+          "en": "The CLI model IDs select repository-defined families and aliases. For a local artifact in Python, source = TemplateLoader().load_from_tokenizer_config(\"tokenizer_config.json\"), followed by Checker().check_source(\"qwen3.8\", source). Read result.diffs and result.failed_count; update the specification only when you have an authoritative reason to change the expected contract.",
+          "zh": "CLI 模型 ID 选择仓库定义的系列及别名。Python 本地产物用法为 source = TemplateLoader().load_from_tokenizer_config(\"tokenizer_config.json\")，然后调用 Checker().check_source(\"qwen3.8\", source)。查看 result.diffs 与 result.failed_count；只有具备权威依据时才修改预期约定。"
+        },
+        "code": ".venv/bin/templ8c models\n.venv/bin/templ8c render --model qwen3.8 --message \"请查询天气。\"\n.venv/bin/templ8c check --model qwen3.8"
+      }
+    ]
+  }
 }

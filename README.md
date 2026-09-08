@@ -1,104 +1,126 @@
-<div align="right"><sub><a href="./README.en.md">English</a>&nbsp;&nbsp;⇄&nbsp;&nbsp;<b>简体中文</b></sub></div>
+[English](./README.en.md) · [Website](https://templ8c.lei6393.com) · [GitHub](https://github.com/SuperMarioYL/templ8c)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/hero-light.svg">
-  <img src="./assets/hero-light.svg" width="880" alt="templ8c — chat-template conformance checker">
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/hero-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/hero-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/hero-dark.svg">
+  <img src="./assets/presentation/hero-light.svg" width="960" alt="Hero diagram">
 </picture>
 
-<p align="center"><sub>在国产模型部署前，捕获 chat-template tool-call 不一致的一致性检查器。</sub></p>
+# templ8c
 
-<p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/github/license/SuperMarioYL/templ8c" alt="license"></a>
-  <a href="https://github.com/SuperMarioYL/templ8c/releases"><img src="https://img.shields.io/github/v/release/SuperMarioYL/templ8c" alt="release"></a>
-  <a href="https://github.com/SuperMarioYL/templ8c/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SuperMarioYL/templ8c/ci.yml?label=ci" alt="CI"></a>
-  <img src="https://img.shields.io/static/v1?label=python&message=3.12%2B&color=306998" alt="python">
-</p>
+**服务启动前，检查对话模板结构**
 
-> 部署前一行命令验证 chat template 的 tool-call 格式——PASS/FAIL + 结构化 diff，精确指出模板哪里与参考 spec 不一致。
+templ8c 将标准消息序列交给 Jinja 对话模板渲染，再检查预期角色标记、工具包装符和字段名。内置模板用于演示检查器自身的约定。
 
-<h2><img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 架构</h2>
+## 为什么需要它
+
+模板改动可能在应用代码未变时改变工具调用周围的文本。把消息样本与预期标记放在一起，可通过可重复本地检查发现结构差异。
+
+- **覆盖多种角色** — 标准样本包括 system、user、工具调用与多轮输出。
+- **指出缺失字段** — 每项差异包含字段、预期标记、观察文本和 PASS/FAIL。
+- **读取本地配置** — TemplateLoader 从 tokenizer_config.json 提取 chat_template，供 check_source 检查。
+
+## 架构
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
-  <img src="./assets/atlas-light.svg" width="880" alt="架构：CLI 到 Checker 到 TemplateLoader 与 Renderer 到 Comparator，由 ConformanceSpec 提供预期格式">
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/architecture-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/architecture-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/architecture-dark.svg">
+  <img src="./assets/presentation/architecture-light.svg" width="960" alt="Architecture diagram">
 </picture>
 
-单进程、单 CLI 入口。`Checker` 加载 Jinja2 chat template（来自 `tokenizer_config.json` 或内置参考模板），用规范测试消息渲染，再由 `Comparator` 逐字段对比 `ConformanceSpec`，输出 `TemplateDiff` 列表。不指定 `--server` 时只检查模板本身渲染是否正确；ServerProbe（m3）之后接入 vLLM/SGLang 实测。
+ConformanceSpec 定义角色标记、工具调用要求和标准样本。TemplateLoader 读取内置模板或所选来源，Renderer 提供 Jinja 环境，Comparator 检查标记、包装符和名称是否出现，Checker 汇总字段级结果。
 
-核心原语 **ConformanceSpec**：一个声明式数据结构，定义“某个模型的 chat template 应该产出什么样的 tool-call 格式”——把散落在文档与 issue 里的隐性知识变成显式、可执行的 spec。
+| 组件 | 职责 |
+| --- | --- |
+| `ConformanceSpec` | markers and message cases |
+| `TemplateLoader` | Jinja source |
+| `Renderer` | canonical message outputs |
+| `Comparator` | field-level PASS / FAIL |
 
-<h2><img src="https://api.iconify.design/tabler:bulb.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 为什么需要</h2>
+## 安装与快速上手
 
-国产模型（GLM-5.3-Flash、Qwen3.8-Flash-Next、DeepSeek-V4）发布周期从季度压缩到周/双周级，每次发布都可能更新 chat template。而 inference server（vLLM、SGLang、llama.cpp）把模板当配置文件加载，不验证它是否“正确”——因为“正确”需要参考实现来对比，server 自己就是被检查对象，不能既当裁判又当运动员。结果是 tool-calling 静默失败：模型输出的 tool-call JSON 与 server 期望的格式不匹配，agent 链路中断，却没有任何部署前检查器能发现。templ8c 补上这个空白——发布后几分钟内确认模板适配是否正确，而不是在 agent 跑挂之后手工排查。
-
-<h2><img src="https://api.iconify.design/tabler:rocket.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 快速开始</h2>
-
-```bash
-pip install templ8c
-templ8c check --model glm-5.3-flash
-# PASS/FAIL + 结构化 diff 指出模板哪里与参考 spec 不一致
-```
-
-<details><summary>示例输出</summary>
-
-```
-templ8c v0.1.0 — chat template conformance checker
-Model: glm-5.3
-Template source: bundled reference (tokenizer_config.json)
-
-  Field              Expected        Actual       Status
-  system_marker      role token      found        PASS
-  user_marker        role token      found        PASS
-  tool_call_wrapper  [CALL_TOOL]     found        PASS
-  tool_call_schema   get_weather     all present  PASS
-  assistant_marker   role token      found        PASS
-  tool_call_wrapper  [CALL_TOOL]     found        PASS
-  tool_call_schema   get_weather     all present  PASS
-  tool_marker        role token      found        PASS
-
-PASS: all fields conform to the reference spec.
-```
-</details>
-
-<h2><img src="https://api.iconify.design/tabler:terminal-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 用法</h2>
+需要 Python 3.12+ 和 uv。模板检查不需要模型权重或推理服务。
 
 ```bash
-# 渲染单条消息经过模型 chat template 后的完整 prompt
-templ8c render --model glm-5.3-flash --message "What's the weather in SF?"
-
-# 一致性检查（m1 仅检查模板渲染本身）
-templ8c check --model qwen3.8
-
-# 列出支持的模型家族
-templ8c models
+git clone https://github.com/SuperMarioYL/templ8c.git
+cd templ8c
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -e .
 ```
 
-编程 API 见 [`examples/render_example.py`](./examples/render_example.py)：
+示例基于内置 qwen3.8 模板创建本地 tokenizer_config.json，经实际加载器读取，再移除预期包装符重新检查。不下载上游模板。
 
-```python
-from templ8c.checker import Checker
-
-checker = Checker()
-print(checker.render("glm-5.3-flash", "What's the weather in SF?"))
-result = checker.check("glm-5.3-flash")
-print(result.passed, result.failed_count)
+```bash
+.venv/bin/python examples/presentation_demo.py
 ```
 
-<h2><img src="https://api.iconify.design/tabler:photo.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> Demo</h2>
+## 实际运行示例
 
-![demo](assets/demo.gif)
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/process-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/process-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/process-dark.svg">
+  <img src="./assets/presentation/process-light.svg" width="960" alt="Process diagram">
+</picture>
 
-<h2><img src="https://api.iconify.design/tabler:map-2.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 路线图</h2>
+Ten checks pass for the bundled example; removing its wrapper creates two failing fields.
 
-- [x] **m1** — 加载并渲染 chat template（GLM-5.3 / Qwen3.8 / DeepSeek-V4）+ ConformanceSpec / comparator，输出 PASS/FAIL + 结构化 diff
-- [ ] **m2** — 每家模型独立 spec 文件 + rich 彩色 diff 输出
-- [ ] **m3** — ServerProbe：通过 vLLM / SGLang API 实测 server 渲染的 template
-- [ ] 未来 — CI/CD 集成（GitHub Action step）、更多 CN 模型与 inference server
+```text
+{"input": "bundled example", "passed": true, "checks": 10, "failed_fields": []}
+{"input": "wrapper removed", "passed": false, "checks": 10, "failed_fields": ["tool_call_wrapper", "tool_call_wrapper"]}
+Scope: repository-authored reference templates; no upstream model release or inference server tested.
+```
 
-<h2><img src="https://api.iconify.design/tabler:license.svg?color=%230071E3&width=24" height="22" align="absmiddle" alt=""> 许可证</h2>
+完整命令与输出保存在 [docs/demo-results.json](./docs/demo-results.json). 输入和复现代码均随仓提供。
 
-MIT — 见 [`LICENSE`](./LICENSE)。欢迎提 issue 或 PR。
+![已有终端录制](./assets/demo.gif)
 
-<p align="center"><sub><a href="./LICENSE">MIT</a> © 2026 SuperMarioYL</sub></p>
+保留已有录制供参考；上方文字示例给出当前可复现的操作。
+
+## 用法
+
+CLI 模型 ID 选择仓库定义的系列及别名。Python 本地产物用法为 source = TemplateLoader().load_from_tokenizer_config("tokenizer_config.json")，然后调用 Checker().check_source("qwen3.8", source)。查看 result.diffs 与 result.failed_count；只有具备权威依据时才修改预期约定。
+
+```bash
+.venv/bin/templ8c models
+.venv/bin/templ8c render --model qwen3.8 --message "请查询天气。"
+.venv/bin/templ8c check --model qwen3.8
+```
+
+## 配置
+
+规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。--server 仅打印提示，仍检查内置模板。
+
+## 集成与职责分工
+
+<picture>
+  <source media="(max-width: 600px) and (prefers-color-scheme: dark)" srcset="./assets/presentation/integrations-mobile-dark.svg">
+  <source media="(max-width: 600px)" srcset="./assets/presentation/integrations-mobile-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/presentation/integrations-dark.svg">
+  <img src="./assets/presentation/integrations-light.svg" width="960" alt="Integrations diagram">
+</picture>
+
+默认 check 将仓库编写的参考模板与配套规范比较。检查真实模型产物时，应加载其实际 tokenizer_config.json 并调用 check_source。内置检查成功不代表验证了上游模型版本。
+
+| 路径 | 已实现职责 |
+| --- | --- |
+| Jinja source | render canonical messages |
+| tokenizer_config.json | local template extraction |
+| HF / ModelScope | explicit remote loader methods |
+| Python API | check_source for custom templates |
+| CLI | render / check / models |
+
+## 限制与后续方向
+
+- 比较器主要检查子串是否出现，不解析全部工具 JSON 语义，也不证明模板等价。
+- 内置规范与系列名称是仓库样本，不是已经验证的上游约定。
+- 推理服务探测尚未实现。模板 PASS 不能说明在线工具调用质量。
+
+已实现本地渲染、参考约定、来源加载器和字段级比较。后续方向包括验证上游参考、深入结构比较和真实推理服务探测。
+
+## 许可与贡献
+
+许可见 [LICENSE](./LICENSE). 反馈问题时请提供最小输入、执行命令和实际输出。
