@@ -10,7 +10,8 @@
   },
   "meta": {
     "visual_style": "neon-particle",
-    "demo_source": "docs/demo-results.json"
+    "demo_source": "docs/demo-results.json",
+    "content_version": "0.2.0"
   },
   "hero": {
     "headline": {
@@ -18,8 +19,8 @@
       "zh": "服务启动前，检查对话模板结构"
     },
     "sub": {
-      "en": "templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Its bundled templates demonstrate the checker’s own contracts.",
-      "zh": "templ8c 将标准消息序列交给 Jinja 对话模板渲染，再检查预期角色标记、工具包装符和字段名。内置模板用于演示检查器自身的约定。"
+      "en": "templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Check bundled or real tokenizer_config.json templates, or probe what a vLLM / SGLang server actually renders.",
+      "zh": "templ8c 将标准消息序列交给 Jinja 对话模板渲染，再检查预期角色标记、工具包装符和字段名。可检查内置或真实 tokenizer_config.json 模板，也可探测 vLLM / SGLang 服务器实际渲染的模板。"
     },
     "href": "#quickstart"
   },
@@ -52,6 +53,16 @@
       "body": {
         "en": "TemplateLoader extracts chat_template from tokenizer_config.json for check_source.",
         "zh": "TemplateLoader 从 tokenizer_config.json 提取 chat_template，供 check_source 检查。"
+      }
+    },
+    {
+      "title": {
+        "en": "Check real templates and live servers",
+        "zh": "检查真实模板与在线服务"
+      },
+      "body": {
+        "en": "check --tokenizer-config / --source inspects a real model artifact; check --server vllm|sglang diffs the prompts the server itself renders.",
+        "zh": "check --tokenizer-config / --source 检查真实模型产物；check --server vllm|sglang 对比服务器自身渲染的 prompt。"
       }
     }
   ],
@@ -112,8 +123,8 @@
       "zh": "内置规范与系列名称是仓库样本，不是已经验证的上游约定。"
     },
     {
-      "en": "Inference-server probes are not implemented. A template PASS says nothing about live tool-call quality.",
-      "zh": "推理服务探测尚未实现。模板 PASS 不能说明在线工具调用质量。"
+      "en": "The server probe goes through each platform's documented /tokenize + /detokenize endpoints and checks the server-rendered template text; it says nothing about live tool-call quality.",
+      "zh": "服务器探测走各平台公开的 /tokenize + /detokenize 端点，检查的是服务器渲染的模板文本，不能说明在线工具调用质量。"
     }
   ],
   "scene": {
@@ -183,8 +194,8 @@
           "zh": "输入与输出"
         },
         "body": {
-          "en": "The default check command compares a repository-authored reference with its matching repository spec. To inspect a real model artifact, load its actual tokenizer_config.json and call check_source. A successful bundled check is not verification of an upstream model release.",
-          "zh": "默认 check 将仓库编写的参考模板与配套规范比较。检查真实模型产物时，应加载其实际 tokenizer_config.json 并调用 check_source。内置检查成功不代表验证了上游模型版本。"
+          "en": "The default check command compares a repository-authored reference with its matching repository spec. To inspect a real model artifact, point the CLI at its actual tokenizer_config.json via --tokenizer-config or --source. A successful bundled check is not verification of an upstream model release.",
+          "zh": "默认 check 将仓库编写的参考模板与配套规范比较；检查真实模型产物时，用 --tokenizer-config 或 --source 指向其实际 tokenizer_config.json。内置检查成功不代表验证了上游模型版本。"
         },
         "image": {
           "light": "/assets/presentation/integrations-light.svg",
@@ -207,8 +218,8 @@
           "zh": "配置"
         },
         "body": {
-          "en": "Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server prints a notice and still checks the bundled template.",
-          "zh": "规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。--server 仅打印提示，仍检查内置模板。"
+          "en": "Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server vllm|sglang renders each test case through the server's chat template via its /tokenize and /detokenize endpoints; --server-url overrides the default http://localhost:8000.",
+          "zh": "规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。--server vllm|sglang 经服务器的 /tokenize 与 /detokenize 端点渲染测试消息；--server-url 覆盖默认地址 http://localhost:8000。"
         }
       },
       {
@@ -217,10 +228,10 @@
           "zh": "进一步使用"
         },
         "body": {
-          "en": "The CLI model IDs select repository-defined families and aliases. For a local artifact in Python, source = TemplateLoader().load_from_tokenizer_config(\"tokenizer_config.json\"), followed by Checker().check_source(\"qwen3.8\", source). Read result.diffs and result.failed_count; update the specification only when you have an authoritative reason to change the expected contract.",
-          "zh": "CLI 模型 ID 选择仓库定义的系列及别名。Python 本地产物用法为 source = TemplateLoader().load_from_tokenizer_config(\"tokenizer_config.json\")，然后调用 Checker().check_source(\"qwen3.8\", source)。查看 result.diffs 与 result.failed_count；只有具备权威依据时才修改预期约定。"
+          "en": "The CLI model IDs select repository-defined families and aliases. Without a source flag, check compares the bundled reference template against its spec; --tokenizer-config and --source point it at a real artifact. Read result.diffs and result.failed_count; update the specification only when you have an authoritative reason to change the expected contract.",
+          "zh": "CLI 模型 ID 选择仓库定义的系列及别名。不带来源参数时，check 比较内置参考模板与配套规范；--tokenizer-config 与 --source 指向真实产物。查看 result.diffs 与 result.failed_count；只有具备权威依据时才修改预期约定。"
         },
-        "code": ".venv/bin/templ8c models\n.venv/bin/templ8c render --model qwen3.8 --message \"请查询天气。\"\n.venv/bin/templ8c check --model qwen3.8"
+        "code": ".venv/bin/templ8c check --model qwen3.8\n.venv/bin/templ8c check --model qwen3.8 --tokenizer-config tokenizer_config.json\n.venv/bin/templ8c check --model qwen3.8 --source hf:zai-org/Qwen3.8\n.venv/bin/templ8c check --model qwen3.8 --server vllm"
       }
     ]
   }
