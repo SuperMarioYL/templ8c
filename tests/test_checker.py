@@ -187,3 +187,28 @@ def test_template_loader_from_string_passthrough() -> None:
 def test_template_loader_load_from_spec() -> None:
     spec = get_spec("qwen3.8")
     assert TemplateLoader().load_from_spec(spec) == spec.template
+
+
+# -- Renderer sandbox (v0.2.0 fix) --------------------------------------------
+
+
+def test_renderer_sandbox_blocks_attribute_escape() -> None:
+    """render.py documents a sandboxed environment for untrusted templates.
+
+    Under a plain jinja2 Environment the first payload renders
+    ``<class 'str'>`` and the second walks the Python class tree (a subclass
+    count); the sandbox must neutralize or reject both.
+    """
+    from jinja2.exceptions import TemplateError
+
+    renderer = Renderer()
+    assert "class" not in renderer.render('{{ "".__class__ }}', [])
+    with pytest.raises(TemplateError):
+        renderer.render("{{ ().__class__.__bases__[0].__subclasses__() | length }}", [])
+
+
+def test_renderer_sandbox_still_renders_bundled_templates() -> None:
+    for family in SPECS:
+        spec = SPECS[family]
+        out = Renderer().render(spec.template, spec.test_cases[-1].messages)
+        assert out, f"{family} bundled template rendered empty under the sandbox"

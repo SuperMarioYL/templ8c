@@ -12,12 +12,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .reference.specs import ConformanceSpec
+
+if TYPE_CHECKING:
+    import httpx
 
 
 class TemplateLoader:
     """Sources of Jinja2 chat-template text."""
+
+    def __init__(self, transport: httpx.BaseTransport | None = None) -> None:
+        # Optional httpx transport injection so the remote loaders are testable
+        # offline (httpx.MockTransport in tests); None means real network.
+        self._transport = transport
 
     def load_from_spec(self, spec: ConformanceSpec) -> str:
         """Return the bundled reference template for a spec (offline happy path)."""
@@ -38,12 +47,16 @@ class TemplateLoader:
 
     def load_from_hf(self, repo_id: str) -> str:
         """Fetch tokenizer_config.json from HuggingFace and return its template."""
-        return _fetch_remote(f"https://huggingface.co/{repo_id}/resolve/main/tokenizer_config.json")
+        return _fetch_remote(
+            f"https://huggingface.co/{repo_id}/resolve/main/tokenizer_config.json",
+            transport=self._transport,
+        )
 
     def load_from_modelscope(self, model_id: str) -> str:
         """Fetch tokenizer_config.json from ModelScope and return its template."""
         return _fetch_remote(
-            f"https://modelscope.cn/api/v1/models/{model_id}/repo?Revision=master&FilePath=tokenizer_config.json"
+            f"https://modelscope.cn/api/v1/models/{model_id}/repo?Revision=master&FilePath=tokenizer_config.json",
+            transport=self._transport,
         )
 
 
@@ -56,11 +69,15 @@ def _extract_chat_template(data: dict) -> str:
     return template
 
 
-def _fetch_remote(url: str) -> str:
-    # httpx is imported lazily so the m1 offline path (and tests) do not require
+def _fetch_remote(url: str, transport: httpx.BaseTransport | None = None) -> str:
+    # httpx is imported lazily so the offline path (and tests) do not require
     # it to be importable at module load.
     import httpx
 
-    resp = httpx.get(url, follow_redirects=True, timeout=30.0)
+    if transport is not None:
+        with httpx.Client(transport=transport, follow_redirects=True, timeout=30.0) as client:
+            resp = client.get(url)
+    else:
+        resp = httpx.get(url, follow_redirects=True, timeout=30.0)
     resp.raise_for_status()
     return _extract_chat_template(resp.json())

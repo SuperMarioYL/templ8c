@@ -1,9 +1,10 @@
 """Checker - orchestrates the load -> render -> compare pipeline for a model.
 
-The m1 milestone supports the template-only path: load the bundled reference
-template (or any template source), render each canonical test case, and diff
-the output against the model's ConformanceSpec. The optional server probe
-(m3) is a follow-on and is not wired here.
+The template-only path loads the bundled reference template (or any template
+source), renders each canonical test case, and diffs the output against the
+model's ConformanceSpec. The server probe path (m3) renders the test cases
+through an inference server's chat template via ServerProbe and diffs those
+prompts against the same spec.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 from .comparator import Comparator, TemplateDiff
 from .reference.specs import ConformanceSpec, get_spec
 from .render import Renderer
+from .server_probe import ServerProbe
 from .template_loader import TemplateLoader
 
 
@@ -61,8 +63,27 @@ class Checker:
         spec = get_spec(model_id)
         return self._check_source(spec, template_source)
 
-    def render(self, model_id: str, message: str) -> str:
-        """Render the model's reference template with a single user message."""
+    def check_server(self, model_id: str, probe: ServerProbe) -> CheckResult:
+        """Check the prompts an inference server renders for ``model_id``.
+
+        The probe renders each of the spec's test cases through the server's
+        chat template; the comparator diffs those prompts against the same
+        ConformanceSpec as the template-only path.
+        """
+        spec = get_spec(model_id)
+        rendered = probe.render_test_cases(spec)
+        diffs = self.comparator.compare(spec, rendered)
+        return CheckResult(model_id=spec.model_id, spec=spec, diffs=diffs)
+
+    def render(self, model_id: str, message: str, template_source: str | None = None) -> str:
+        """Render the model's template with a single user message.
+
+        Without ``template_source`` this renders the bundled reference
+        template; with it, the given template (e.g. loaded from a real
+        tokenizer_config.json).
+        """
+        if template_source is not None:
+            return self.renderer.render(template_source, [{"role": "user", "content": message}])
         spec = get_spec(model_id)
         source = self.loader.load_from_spec(spec)
         return self.renderer.render(source, [{"role": "user", "content": message}])

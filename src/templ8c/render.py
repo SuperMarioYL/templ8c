@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 
-from jinja2 import Environment
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 
 def _tojson(value) -> str:
@@ -24,7 +24,10 @@ class Renderer:
     def __init__(self) -> None:
         # trim_blocks/lstrip_blocks match the convention transformers uses, so
         # control-flow tags do not leave stray newlines in the rendered prompt.
-        self.env = Environment(trim_blocks=True, lstrip_blocks=True)
+        # The environment is sandboxed (as transformers does) because templates
+        # come from tokenizer_config.json files of third-party model releases:
+        # a plain Environment lets a template walk the Python class tree.
+        self.env = ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
         self.env.filters["tojson"] = _tojson
 
     def render(self, template_source: str, messages: list[dict], **context) -> str:

@@ -11,7 +11,7 @@
 
 **Check chat-template structure before serving**
 
-templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Its bundled templates demonstrate the checker’s own contracts.
+templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Its bundled templates demonstrate the checker’s own contracts; `--tokenizer-config` / `--source` point it at real model artifacts, and `--server` probes what a vLLM / SGLang server actually renders.
 
 ## Why use it
 
@@ -20,6 +20,8 @@ A template change can alter the text surrounding a tool call while leaving the a
 - **Exercise multiple roles** — Canonical cases include system/user messages, tool calls and multi-turn output.
 - **Name the missing field** — Each diff includes the field, expected marker, observed text and PASS/FAIL.
 - **Read local configs** — TemplateLoader extracts chat_template from tokenizer_config.json for check_source.
+- **Check real templates** — `templ8c check --tokenizer-config <path>` or `--source hf:<repo>|modelscope:<model>` checks an actual model artifact.
+- **Probe inference servers** — `templ8c check --server vllm|sglang` renders the test cases through the server’s own chat template and compares against the spec.
 
 ## Architecture
 
@@ -30,14 +32,15 @@ A template change can alter the text surrounding a tool call while leaving the a
   <img src="./assets/presentation/architecture-light.svg" width="960" alt="Architecture diagram">
 </picture>
 
-ConformanceSpec owns role markers, tool-call expectations and canonical cases. TemplateLoader reads a bundled template or a selected source. Renderer supplies a Jinja environment; Comparator checks marker/wrapper/name presence, and Checker assembles field-level results.
+ConformanceSpec owns role markers, tool-call expectations and canonical cases. TemplateLoader reads a bundled template or a selected source. Renderer supplies a sandboxed Jinja environment; Comparator checks marker/wrapper/name presence, Checker assembles field-level results, and ServerProbe captures the prompts an inference server renders via its `/tokenize` + `/detokenize` endpoints.
 
 | Component | Responsibility |
 | --- | --- |
 | `ConformanceSpec` | markers and message cases |
 | `TemplateLoader` | Jinja source |
-| `Renderer` | canonical message outputs |
+| `Renderer` | canonical message outputs (sandboxed) |
 | `Comparator` | field-level PASS / FAIL |
+| `ServerProbe` | server-rendered prompts (vLLM / SGLang) |
 
 ## Install and quickstart
 
@@ -82,17 +85,23 @@ The existing recording is retained for context; the text example above documents
 
 ## Usage
 
-The CLI model IDs select repository-defined families and aliases. For a local artifact in Python, source = TemplateLoader().load_from_tokenizer_config("tokenizer_config.json"), followed by Checker().check_source("qwen3.8", source). Read result.diffs and result.failed_count; update the specification only when you have an authoritative reason to change the expected contract.
+The CLI model IDs select repository-defined families and aliases. Without a source flag, check compares the bundled reference template against its spec; `--tokenizer-config` points at a local tokenizer_config.json and `--source hf:<repo>` / `--source modelscope:<model>` fetches the remote one (the two are mutually exclusive). Read result.diffs and result.failed_count; update the specification only when you have an authoritative reason to change the expected contract.
 
 ```bash
 .venv/bin/templ8c models
 .venv/bin/templ8c render --model qwen3.8 --message "请查询天气。"
 .venv/bin/templ8c check --model qwen3.8
+.venv/bin/templ8c check --model qwen3.8 --tokenizer-config tokenizer_config.json
+.venv/bin/templ8c check --model qwen3.8 --source hf:zai-org/Qwen3.8
+.venv/bin/templ8c check --model qwen3.8 --server vllm --server-url http://localhost:8000
+.venv/bin/templ8c --version
 ```
+
+For a local artifact in Python, source = TemplateLoader().load_from_tokenizer_config("tokenizer_config.json"), followed by Checker().check_source("qwen3.8", source).
 
 ## Configuration
 
-Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server prints a notice and still checks the bundled template.
+Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. `--server vllm|sglang` renders each canonical test case through the server’s chat template via its `/tokenize` (messages form) and `/detokenize` endpoints and diffs the server-rendered prompt against the same spec; the default base URL is `http://localhost:8000`, overridable with `--server-url`. Load, fetch and probe failures all exit non-zero.
 
 ## Integrations and responsibilities
 
@@ -103,13 +112,14 @@ Specifications live in src/templ8c/reference/specs.py. Template config input acc
   <img src="./assets/presentation/integrations-light.svg" width="960" alt="Integrations diagram">
 </picture>
 
-The default check command compares a repository-authored reference with its matching repository spec. To inspect a real model artifact, load its actual tokenizer_config.json and call check_source. A successful bundled check is not verification of an upstream model release.
+The default check command compares a repository-authored reference with its matching repository spec. To inspect a real model artifact, point the CLI at its actual tokenizer_config.json via `--tokenizer-config` or `--source`. A successful bundled check is not verification of an upstream model release.
 
 | Route | Implemented role |
 | --- | --- |
 | Jinja source | render canonical messages |
-| tokenizer_config.json | local template extraction |
-| HF / ModelScope | explicit remote loader methods |
+| tokenizer_config.json | local template extraction (CLI `--tokenizer-config`) |
+| HF / ModelScope | remote fetch (CLI `--source`) |
+| vLLM / SGLang server | template probe (CLI `--server`) |
 | Python API | check_source for custom templates |
 | CLI | render / check / models |
 
@@ -117,9 +127,9 @@ The default check command compares a repository-authored reference with its matc
 
 - The comparator primarily checks substring presence. It does not parse all tool JSON semantics or prove template equivalence.
 - Bundled specs and family names are repository fixtures, not verified upstream contracts.
-- Inference-server probes are not implemented. A template PASS says nothing about live tool-call quality.
+- The server probe goes through each platform’s documented `/tokenize` + `/detokenize` endpoints and checks the server-rendered template text; it says nothing about live tool-call quality.
 
-Implemented: local rendering, reference contracts, source loaders and field-level comparison. Future directions include validated upstream references, deeper structural comparison and actual inference-server probes.
+Implemented: sandboxed local rendering, reference contracts, source loaders, field-level comparison and inference-server probes. Future directions include validated upstream references and deeper structural comparison.
 
 ## License and contributions
 
