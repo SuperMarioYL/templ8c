@@ -9,6 +9,7 @@ constructors in templ8c.cli - no network access. Exit codes: 0 conformant,
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -24,6 +25,18 @@ from templ8c.template_loader import TemplateLoader
 runner = CliRunner()
 
 BROKEN_TEMPLATE = "{% for m in messages %}{{ m['content'] }}{% endfor %}"
+
+
+def _plain(output: str) -> str:
+    """Strip ANSI styling, panel borders and line wrapping.
+
+    rich renders error panels at the console width with ANSI colors on CI,
+    so a multi-word error message can wrap inside the panel; asserting
+    against the unwrapped text keeps the tests width-independent.
+    """
+    no_ansi = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    no_box = re.sub(r"[│╭╮╰╯─┬┴┼┌┐└┘┤├]", " ", no_ansi)
+    return re.sub(r"\s+", " ", no_box)
 
 
 def _write_tokenizer_config(tmp_path: Path, template: str) -> Path:
@@ -45,7 +58,7 @@ def test_check_bundled_default_passes() -> None:
 def test_check_unsupported_model_fails_cleanly() -> None:
     result = runner.invoke(app, ["check", "--model", "llama-4"])
     assert result.exit_code == 1
-    assert "unsupported model" in result.output
+    assert "unsupported model" in _plain(result.output)
     assert "Traceback" not in result.output
 
 
@@ -71,7 +84,7 @@ def test_check_tokenizer_config_and_source_mutually_exclusive(tmp_path: Path) ->
         ["check", "--model", "qwen3.8", "--tokenizer-config", str(cfg), "--source", "hf:a/b"],
     )
     assert result.exit_code == 2
-    assert "mutually exclusive" in result.output
+    assert "mutually exclusive" in _plain(result.output)
 
 
 def test_check_missing_tokenizer_config_fails_cleanly() -> None:
@@ -121,14 +134,14 @@ def test_check_source_hf_404_fails_cleanly(monkeypatch) -> None:
     )
     result = runner.invoke(app, ["check", "--model", "qwen3.8", "--source", "hf:nope/nothing"])
     assert result.exit_code == 1
-    assert "failed to fetch" in result.output
+    assert "failed to fetch" in _plain(result.output)
     assert "Traceback" not in result.output
 
 
 def test_check_source_bad_format_rejected() -> None:
     result = runner.invoke(app, ["check", "--model", "qwen3.8", "--source", "huggingface:a/b"])
     assert result.exit_code == 2
-    assert "--source must be hf:<repo_id> or modelscope:<model_id>" in result.output
+    assert "--source must be hf:<repo_id> or modelscope:<model_id>" in _plain(result.output)
 
 
 def test_render_with_tokenizer_config(tmp_path: Path) -> None:
