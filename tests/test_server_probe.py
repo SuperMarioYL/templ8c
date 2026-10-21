@@ -149,3 +149,23 @@ def test_probe_non_200_response_becomes_probe_error() -> None:
     probe = ServerProbe("sglang", "http://server.test", transport=httpx.MockTransport(handler))
     with pytest.raises(ProbeError, match=r"/tokenize returned HTTP 500"):
         probe.render_test_cases(get_spec("qwen3.8"))
+
+
+def test_probe_non_json_200_becomes_probe_error() -> None:
+    """A proxy answering 200 with HTML must not raise JSONDecodeError."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>gateway error</html>")
+
+    probe = ServerProbe("vllm", "http://server.test", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProbeError, match=r"non-JSON body"):
+        probe.render_test_cases(get_spec("qwen3.8"))
+
+
+def test_probe_non_object_200_becomes_probe_error() -> None:
+    """A 200 JSON array must not raise AttributeError."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[1, 2, 3])
+
+    probe = ServerProbe("sglang", "http://server.test", transport=httpx.MockTransport(handler))
+    with pytest.raises(ProbeError, match=r"expected an object"):
+        probe.render_test_cases(get_spec("qwen3.8"))

@@ -4,18 +4,38 @@ message list into the full prompt string.
 A sandboxed environment is used (as transformers does) so an untrusted template
 cannot mutate caller state. The ``tojson`` filter is registered explicitly
 because vanilla jinja2 does not ship it; CN model templates rely on it to emit
-tool-call JSON.
+tool-call JSON. Like transformers, the filter accepts the keyword arguments real
+templates pass (``tojson(ensure_ascii=False)``, ``tojson(separators=...)``).
 """
 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 
-def _tojson(value) -> str:
-    return json.dumps(value, ensure_ascii=False)
+def _tojson(
+    value: Any,
+    indent: int | None = None,
+    ensure_ascii: bool = False,
+    separators: tuple[str, str] | None = None,
+    sort_keys: bool = False,
+) -> str:
+    """``json.dumps`` with the arguments Jinja's built-in ``tojson`` lacks.
+
+    transformers overrides the filter the same way, because real chat templates
+    call it with these keywords; a single-argument filter raises TypeError on
+    them.
+    """
+    return json.dumps(
+        value,
+        indent=indent,
+        ensure_ascii=ensure_ascii,
+        separators=separators,
+        sort_keys=sort_keys,
+    )
 
 
 class Renderer:

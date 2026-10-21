@@ -102,7 +102,19 @@ class ServerProbe:
                 f"{self.server} {path} returned HTTP {response.status_code}: "
                 f"{response.text[:200]}"
             )
-        return response.json()
+        try:
+            payload = response.json()
+        except ValueError:
+            raise ProbeError(
+                f"{self.server} {path} returned HTTP 200 with a non-JSON body: "
+                f"{response.text[:200]}"
+            ) from None
+        if not isinstance(payload, dict):
+            raise ProbeError(
+                f"{self.server} {path} returned HTTP 200 with a JSON "
+                f"{type(payload).__name__}, expected an object"
+            )
+        return payload
 
 
 __all__ = ["ServerProbe", "ProbeError", "SUPPORTED_SERVERS", "DEFAULT_SERVER_URL"]

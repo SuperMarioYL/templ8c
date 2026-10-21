@@ -5,11 +5,17 @@ source), renders each canonical test case, and diffs the output against the
 model's ConformanceSpec. The server probe path (m3) renders the test cases
 through an inference server's chat template via ServerProbe and diffs those
 prompts against the same spec.
+
+A template that cannot be rendered (a real model's template that needs data the
+canonical cases do not carry, or one the sandbox rejects) is reported as a
+ValueError naming the failing case, so callers surface it as a clean error.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from jinja2.exceptions import TemplateError
 
 from .comparator import Comparator, TemplateDiff
 from .reference.specs import ConformanceSpec, get_spec
@@ -82,17 +88,24 @@ class Checker:
         template; with it, the given template (e.g. loaded from a real
         tokenizer_config.json).
         """
-        if template_source is not None:
-            return self.renderer.render(template_source, [{"role": "user", "content": message}])
-        spec = get_spec(model_id)
-        source = self.loader.load_from_spec(spec)
-        return self.renderer.render(source, [{"role": "user", "content": message}])
+        if template_source is None:
+            template_source = self.loader.load_from_spec(get_spec(model_id))
+        try:
+            return self.renderer.render(
+                template_source, [{"role": "user", "content": message}]
+            )
+        except TemplateError as exc:
+            raise ValueError(f"template failed to render: {exc}") from exc
 
     def _check_source(self, spec: ConformanceSpec, source: str) -> CheckResult:
-        rendered = {
-            case.name: self.renderer.render(source, case.messages)
-            for case in spec.test_cases
-        }
+        rendered: dict[str, str] = {}
+        for case in spec.test_cases:
+            try:
+                rendered[case.name] = self.renderer.render(source, case.messages)
+            except TemplateError as exc:
+                raise ValueError(
+                    f"template failed to render for test case '{case.name}': {exc}"
+                ) from exc
         diffs = self.comparator.compare(spec, rendered)
         return CheckResult(model_id=spec.model_id, spec=spec, diffs=diffs)
 

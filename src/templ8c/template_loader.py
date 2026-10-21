@@ -6,11 +6,17 @@ The m1 happy path uses the bundled reference template carried by each spec
 remote loaders exist so a developer can point templ8c at the real
 tokenizer_config shipped with a model release and check that, not the bundled
 reference.
+
+A repo's template is read from the inline ``chat_template`` field of
+tokenizer_config.json, or - when that field is absent or null, as several CN
+model releases ship it - from the sibling ``chat_template.jinja`` artifact.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +24,17 @@ from .reference.specs import ConformanceSpec
 
 if TYPE_CHECKING:
     import httpx
+
+TOKENIZER_CONFIG = "tokenizer_config.json"
+CHAT_TEMPLATE_JINJA = "chat_template.jinja"
+
+
+@dataclass(frozen=True)
+class LoadedTemplate:
+    """A chat template plus the artifact it was read from."""
+
+    template: str
+    artifact: str
 
 
 class TemplateLoader:
@@ -46,38 +63,100 @@ class TemplateLoader:
         return _extract_chat_template(data)
 
     def load_from_hf(self, repo_id: str) -> str:
-        """Fetch tokenizer_config.json from HuggingFace and return its template."""
-        return _fetch_remote(
-            f"https://huggingface.co/{repo_id}/resolve/main/tokenizer_config.json",
-            transport=self._transport,
-        )
+        """Fetch the chat template from a HuggingFace repo."""
+        return self.load_remote("hf", repo_id).template
 
     def load_from_modelscope(self, model_id: str) -> str:
-        """Fetch tokenizer_config.json from ModelScope and return its template."""
-        return _fetch_remote(
-            f"https://modelscope.cn/api/v1/models/{model_id}/repo?Revision=master&FilePath=tokenizer_config.json",
-            transport=self._transport,
-        )
+        """Fetch the chat template from a ModelScope repo."""
+        return self.load_remote("modelscope", model_id).template
+
+    def load_remote(self, kind: str, ref: str) -> LoadedTemplate:
+        """Fetch a remote repo's chat template and report which artifact held it."""
+        if kind == "hf":
+            url_for = _hf_url
+        elif kind == "modelscope":
+            url_for = _modelscope_url
+        else:
+            raise ValueError(f"unsupported template source kind '{kind}'")
+        return _fetch_chat_template(url_for, ref, self._transport)
 
 
-def _extract_chat_template(data: dict) -> str:
+def _hf_url(ref: str, name: str) -> str:
+    return f"https://huggingface.co/{ref}/resolve/main/{name}"
+
+
+def _modelscope_url(ref: str, name: str) -> str:
+    return (
+        f"https://modelscope.cn/api/v1/models/{ref}/repo"
+        f"?Revision=master&FilePath={name}"
+    )
+
+
+def _extract_chat_template(data: object) -> str:
+    """Return the usable template in a parsed tokenizer_config.json.
+
+    Raises ValueError (never IndexError/KeyError/TypeError) for any shape that
+    carries no usable template, so callers can report it as a clean error.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("tokenizer_config.json is not a JSON object")
     template = data.get("chat_template")
     if isinstance(template, list):
-        template = template[0]["template"]
+        template = _first_template_entry(template)
     if not isinstance(template, str) or not template.strip():
         raise ValueError("tokenizer_config.json has no usable 'chat_template' field")
     return template
 
 
-def _fetch_remote(url: str, transport: httpx.BaseTransport | None = None) -> str:
+def _first_template_entry(entries: list) -> str | None:
+    """The first usable template from the list-of-objects ``chat_template`` form."""
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("template"), str):
+            return entry["template"]
+    return None
+
+
+def _fetch_chat_template(
+    url_for: Callable[[str, str], str],
+    ref: str,
+    transport: httpx.BaseTransport | None = None,
+) -> LoadedTemplate:
+    """Fetch a repo's chat template, preferring the inline tokenizer_config field.
+
+    Falls back to the sibling ``chat_template.jinja`` when tokenizer_config.json
+    carries no usable template - the form GLM-4.5/4.6, Kimi-K2 and Qwen3-Omni
+    releases use.
+    """
+    data = _get_json(url_for(ref, TOKENIZER_CONFIG), transport)
+    try:
+        return LoadedTemplate(_extract_chat_template(data), TOKENIZER_CONFIG)
+    except ValueError:
+        pass
+    return LoadedTemplate(
+        _get_text(url_for(ref, CHAT_TEMPLATE_JINJA), transport), CHAT_TEMPLATE_JINJA
+    )
+
+
+def _get(url: str, transport: httpx.BaseTransport | None) -> httpx.Response:
     # httpx is imported lazily so the offline path (and tests) do not require
     # it to be importable at module load.
     import httpx
 
     if transport is not None:
         with httpx.Client(transport=transport, follow_redirects=True, timeout=30.0) as client:
-            resp = client.get(url)
+            response = client.get(url)
     else:
-        resp = httpx.get(url, follow_redirects=True, timeout=30.0)
-    resp.raise_for_status()
-    return _extract_chat_template(resp.json())
+        response = httpx.get(url, follow_redirects=True, timeout=30.0)
+    response.raise_for_status()
+    return response
+
+
+def _get_json(url: str, transport: httpx.BaseTransport | None) -> object:
+    return _get(url, transport).json()
+
+
+def _get_text(url: str, transport: httpx.BaseTransport | None) -> str:
+    return _get(url, transport).text
+
+
+__all__ = ["LoadedTemplate", "TemplateLoader"]

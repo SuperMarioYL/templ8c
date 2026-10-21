@@ -212,3 +212,81 @@ def test_renderer_sandbox_still_renders_bundled_templates() -> None:
         spec = SPECS[family]
         out = Renderer().render(spec.template, spec.test_cases[-1].messages)
         assert out, f"{family} bundled template rendered empty under the sandbox"
+
+
+# -- tojson filter arguments (v0.3.0 fix) -------------------------------------
+
+
+def test_tojson_default_unchanged() -> None:
+    """The widened filter keeps the shipped default (ensure_ascii=False)."""
+    out = Renderer().render("{{ data | tojson }}", [], data={"city": "北京"})
+    assert out == '{"city": "北京"}'
+
+
+def test_tojson_filter_accepts_real_template_arguments() -> None:
+    """Real CN templates pass keyword arguments; a one-argument filter raised
+    TypeError on both of these (zai-org/GLM-4.5 uses ensure_ascii, Kimi-K2 uses
+    separators)."""
+    renderer = Renderer()
+    assert renderer.render(
+        "{{ data | tojson(ensure_ascii=False) }}", [], data={"city": "北京"}
+    ) == '{"city": "北京"}'
+    assert renderer.render(
+        "{{ data | tojson(separators=(',', ':')) }}", [], data={"a": 1, "b": 2}
+    ) == '{"a":1,"b":2}'
+
+
+# -- malformed tokenizer_config shapes (v0.3.0 fix) ---------------------------
+
+
+@pytest.mark.parametrize("data", [
+    {"chat_template": []},
+    {"chat_template": [{"name": "default"}]},
+    {"chat_template": ["not a mapping"]},
+    {"chat_template": [{"name": "x", "template": 3}]},
+    ["not", "an", "object"],
+    "a bare string",
+])
+def test_extract_chat_template_rejects_malformed_shapes(data) -> None:
+    """Every unusable shape raises ValueError, never IndexError/KeyError/TypeError."""
+    from templ8c.template_loader import _extract_chat_template
+
+    with pytest.raises(ValueError, match="chat_template|JSON object"):
+        _extract_chat_template(data)
+
+
+def test_extract_chat_template_accepts_both_real_forms() -> None:
+    from templ8c.template_loader import _extract_chat_template
+
+    assert _extract_chat_template({"chat_template": "A"}) == "A"
+    assert _extract_chat_template(
+        {"chat_template": [{"name": "tool_use", "template": "T"}, {"name": "default", "template": "D"}]}
+    ) == "T"
+
+
+# -- unrenderable templates (v0.3.0 fix) --------------------------------------
+
+
+def test_checker_names_the_case_that_failed_to_render() -> None:
+    """A real template may need data the canonical cases do not carry (e.g. the
+    GLM-4.5/4.6 templates iterate ``arguments`` as a mapping); the failure must
+    be a ValueError naming the case, never a bare jinja2 TemplateError."""
+    template = (
+        "{% for m in messages %}{% for tc in m.get('tool_calls') or [] %}"
+        "{{ tc['function']['arguments'].items() }}{% endfor %}{% endfor %}"
+    )
+    with pytest.raises(ValueError, match="test case 'tool_call'"):
+        Checker().check_source("glm-5.3", template)
+
+
+def test_checker_reports_sandbox_rejection_as_value_error() -> None:
+    """The sandbox rejecting an untrusted template is a clean error too."""
+    with pytest.raises(ValueError, match="test case 'system_prompt'"):
+        Checker().check_source(
+            "glm-5.3", "{{ ().__class__.__bases__[0].__subclasses__() | length }}"
+        )
+
+
+def test_checker_render_reports_render_failure_as_value_error() -> None:
+    with pytest.raises(ValueError, match="failed to render"):
+        Checker().render("glm-5.3", "hi", template_source="{{ nothing() }}")

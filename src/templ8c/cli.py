@@ -8,8 +8,9 @@
 
 Without ``--tokenizer-config``/``--source`` the check compares the bundled
 reference template against its spec; the flags point it at a real model's
-tokenizer_config.json instead. ``--server`` additionally probes what an
-inference server (vllm|sglang) actually renders for the same test cases.
+tokenizer_config.json instead (or, when that file carries no inline template,
+at the repo's sibling chat_template.jinja). ``--server`` additionally probes what
+an inference server (vllm|sglang) actually renders for the same test cases.
 """
 
 from __future__ import annotations
@@ -85,13 +86,11 @@ def _load_template_option(
                 "--source must be hf:<repo_id> or modelscope:<model_id>"
             )
         try:
-            if scheme == "hf":
-                template = loader.load_from_hf(ref)
-                return template, f"tokenizer_config.json (HuggingFace: {ref})"
-            template = loader.load_from_modelscope(ref)
-            return template, f"tokenizer_config.json (ModelScope: {ref})"
+            loaded = loader.load_remote(scheme, ref)
         except (ValueError, httpx.HTTPError) as exc:
-            _fail(f"failed to fetch tokenizer_config.json for {source}: {exc}")
+            _fail(f"failed to fetch the chat template for {source}: {exc}")
+        host = "HuggingFace" if scheme == "hf" else "ModelScope"
+        return loaded.template, f"{loaded.artifact} ({host}: {ref})"
 
     return None, "bundled reference (tokenizer_config.json)"
 

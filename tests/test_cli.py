@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 import httpx
+import pytest
 from typer.testing import CliRunner
 
 import templ8c.cli as cli_module
@@ -138,6 +139,108 @@ def test_check_source_hf_404_fails_cleanly(monkeypatch) -> None:
     assert "Traceback" not in result.output
 
 
+# -- chat_template.jinja fallback (v0.3.0 fix) --------------------------------
+#
+# Several CN releases ship tokenizer_config.json with chat_template null and put
+# the template in the sibling chat_template.jinja (GLM-4.5/4.6, Kimi-K2,
+# Qwen3-Omni). The mock serves either artifact by name, for both source schemes.
+
+
+def _repo_transport(files: dict[str, httpx.Response]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        name = request.url.params.get("FilePath") or request.url.path.rsplit("/", 1)[-1]
+        return files.get(name, httpx.Response(404, json={"error": "not found"}))
+
+    return httpx.MockTransport(handler)
+
+
+def _patch_loader(monkeypatch, transport: httpx.MockTransport) -> None:
+    real_loader = TemplateLoader
+    monkeypatch.setattr(cli_module, "TemplateLoader", lambda: real_loader(transport=transport))
+
+
+@pytest.mark.parametrize("scheme,ref", [
+    ("hf", "zai-org/GLM-4.5"),
+    ("modelscope", "ZhipuAI/GLM-4.5"),
+])
+def test_check_source_falls_back_to_chat_template_jinja(monkeypatch, scheme, ref) -> None:
+    _patch_loader(monkeypatch, _repo_transport({
+        "tokenizer_config.json": httpx.Response(200, json={"chat_template": None}),
+        "chat_template.jinja": httpx.Response(200, text=get_spec("qwen3.8").template),
+    }))
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--source", f"{scheme}:{ref}"])
+    assert result.exit_code == 0, result.output
+    assert "Template source: chat_template.jinja (" in result.output
+    assert "PASS" in result.output
+
+
+def test_check_source_reports_inline_artifact_when_present(monkeypatch) -> None:
+    _patch_loader(monkeypatch, _repo_transport({
+        "tokenizer_config.json": httpx.Response(200, json={"chat_template": get_spec("qwen3.8").template}),
+        "chat_template.jinja": httpx.Response(200, text="IGNORED"),
+    }))
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--source", "hf:zai-org/Qwen3.8-Test"])
+    assert result.exit_code == 0
+    assert "Template source: tokenizer_config.json (HuggingFace:" in result.output
+
+
+def test_check_source_both_artifacts_unusable_fails_cleanly(monkeypatch) -> None:
+    _patch_loader(monkeypatch, _repo_transport({
+        "tokenizer_config.json": httpx.Response(200, json={"chat_template": None}),
+    }))
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--source", "hf:no/jinja"])
+    assert result.exit_code == 1
+    assert "failed to fetch" in _plain(result.output)
+    assert "Traceback" not in result.output
+
+
+# -- malformed tokenizer_config.json (v0.3.0 fix) -----------------------------
+
+
+@pytest.mark.parametrize("body", [
+    {"chat_template": []},
+    {"chat_template": [{"name": "default"}]},
+])
+def test_check_malformed_tokenizer_config_fails_cleanly(tmp_path: Path, body: dict) -> None:
+    cfg = tmp_path / "tokenizer_config.json"
+    cfg.write_text(json.dumps(body), encoding="utf-8")
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--tokenizer-config", str(cfg)])
+    assert result.exit_code == 1
+    assert "chat_template" in result.output
+    assert "Traceback" not in result.output
+
+
+# -- unrenderable templates (v0.3.0 fix) --------------------------------------
+
+
+def test_check_tokenizer_config_render_failure_fails_cleanly(tmp_path: Path) -> None:
+    cfg = _write_tokenizer_config(tmp_path, "{{ nothing() }}")
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--tokenizer-config", str(cfg)])
+    assert result.exit_code == 1
+    assert "failed to render" in _plain(result.output)
+    assert "Traceback" not in result.output
+
+
+def test_check_tokenizer_config_sandbox_rejection_fails_cleanly(tmp_path: Path) -> None:
+    cfg = _write_tokenizer_config(
+        tmp_path, "{{ ().__class__.__bases__[0].__subclasses__() | length }}"
+    )
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--tokenizer-config", str(cfg)])
+    assert result.exit_code == 1
+    assert "failed to render" in _plain(result.output)
+    assert "Traceback" not in result.output
+
+
+def test_render_render_failure_fails_cleanly(tmp_path: Path) -> None:
+    cfg = _write_tokenizer_config(tmp_path, "{{ nothing() }}")
+    result = runner.invoke(
+        app, ["render", "--model", "qwen3.8", "--tokenizer-config", str(cfg), "--message", "hi"]
+    )
+    assert result.exit_code == 1
+    assert "failed to render" in _plain(result.output)
+    assert "Traceback" not in result.output
+
+
 def test_check_source_bad_format_rejected() -> None:
     result = runner.invoke(app, ["check", "--model", "qwen3.8", "--source", "huggingface:a/b"])
     assert result.exit_code == 2
@@ -220,6 +323,19 @@ def test_check_server_connection_error_fails_cleanly(monkeypatch) -> None:
 
     _patch_probe(monkeypatch, httpx.MockTransport(handler))
     result = runner.invoke(app, ["check", "--model", "qwen3.8", "--server", "sglang"])
+    assert result.exit_code == 1
+    assert "error" in result.output.lower()
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(200, text="<html>gateway error</html>"),
+    httpx.Response(200, json=[1, 2, 3]),
+])
+def test_check_server_non_object_200_fails_cleanly(monkeypatch, response) -> None:
+    """A 200 whose body is not a JSON object is a probe error, not a traceback."""
+    _patch_probe(monkeypatch, httpx.MockTransport(lambda request: response))
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--server", "vllm"])
     assert result.exit_code == 1
     assert "error" in result.output.lower()
     assert "Traceback" not in result.output

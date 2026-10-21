@@ -1,13 +1,15 @@
 """Lockstep test: every tool-version surface must agree.
 
 Surfaces pinned here: ``templ8c.__version__``, the pyproject ``[project]``
-version, the CLI ``--version`` output, and the latest CHANGELOG.md section.
-templ8c has no data-format schema version constant (ConformanceSpec is
-code-defined), so these are all the versioned surfaces.
+version, the CLI ``--version`` output, the latest CHANGELOG.md section, and the
+``meta.content_version`` of the published ``web/site.json``. templ8c has no
+data-format schema version constant (ConformanceSpec is code-defined), so these
+are all the versioned surfaces.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 from pathlib import Path
@@ -36,3 +38,8 @@ def test_changelog_latest_section_matches_package() -> None:
     sections = re.findall(r"^## \[([0-9.]+)\]", text, re.MULTILINE)
     assert sections, "no version sections in CHANGELOG.md"
     assert sections[0] == __version__
+
+
+def test_site_json_content_version_matches_package() -> None:
+    site = json.loads((REPO_ROOT / "web" / "site.json").read_text(encoding="utf-8"))
+    assert site["meta"]["content_version"] == __version__

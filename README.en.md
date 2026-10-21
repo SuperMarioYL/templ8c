@@ -101,7 +101,7 @@ For a local artifact in Python, source = TemplateLoader().load_from_tokenizer_co
 
 ## Configuration
 
-Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. `--server vllm|sglang` renders each canonical test case through the server’s chat template via its `/tokenize` (messages form) and `/detokenize` endpoints and diffs the server-rendered prompt against the same spec; the default base URL is `http://localhost:8000`, overridable with `--server-url`. Load, fetch and probe failures all exit non-zero.
+Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form; when tokenizer_config.json carries no usable chat_template (some releases ship it as null), `--source` falls back to the repo’s chat_template.jinja and the `Template source:` line reports the file actually used. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. `--server vllm|sglang` renders each canonical test case through the server’s chat template via its `/tokenize` (messages form) and `/detokenize` endpoints and diffs the server-rendered prompt against the same spec; the default base URL is `http://localhost:8000`, overridable with `--server-url`. Load, fetch and probe failures all exit non-zero.
 
 ## Integrations and responsibilities
 
