@@ -19,8 +19,8 @@
       "zh": "服务启动前，检查对话模板结构"
     },
     "sub": {
-      "en": "templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Check bundled or real tokenizer_config.json templates, or probe what a vLLM / SGLang server actually renders.",
-      "zh": "templ8c 将标准消息序列交给 Jinja 对话模板渲染，再检查预期角色标记、工具包装符和字段名。可检查内置或真实 tokenizer_config.json 模板，也可探测 vLLM / SGLang 服务器实际渲染的模板。"
+      "en": "templ8c renders canonical message sequences through a Jinja chat template and compares expected role markers, tool wrappers and field names. Check bundled or real templates (tokenizer_config.json or its sibling chat_template.jinja), or probe what a vLLM / SGLang server actually renders.",
+      "zh": "templ8c 将标准消息序列交给 Jinja 对话模板渲染，再检查预期角色标记、工具包装符和字段名。可检查内置或真实模板（tokenizer_config.json 或其同级 chat_template.jinja），也可探测 vLLM / SGLang 服务器实际渲染的模板。"
     },
     "href": "#quickstart"
   },
@@ -56,16 +56,27 @@
       }
     },
     {
-      "title": {
-        "en": "Check real templates and live servers",
-        "zh": "检查真实模板与在线服务"
-      },
-      "body": {
-        "en": "check --tokenizer-config / --source inspects a real model artifact; check --server vllm|sglang diffs the prompts the server itself renders.",
-        "zh": "check --tokenizer-config / --source 检查真实模型产物；check --server vllm|sglang 对比服务器自身渲染的 prompt。"
-      }
-    }
-  ],
+            "title": {
+                "en": "Check real templates and live servers",
+                "zh": "检查真实模板与在线服务"
+            },
+            "body": {
+                "en": "check --tokenizer-config / --source inspects a real model artifact — the inline chat_template or the sibling chat_template.jinja; check --server vllm|sglang diffs the prompts the server itself renders.",
+                "zh": "check --tokenizer-config / --source 检查真实模型产物（内联 chat_template 或同级 chat_template.jinja）；check --server vllm|sglang 对比服务器自身渲染的 prompt。"
+            }
+        },
+        {
+            "title": {
+                "en": "Run real templates as written",
+                "zh": "真实模板可直接执行"
+            },
+            "body": {
+                "en": "The tojson filter accepts the arguments real templates pass (ensure_ascii, separators), so GLM and Kimi templates execute instead of raising TypeError.",
+                "zh": "tojson 过滤器接受真实模板传入的参数（ensure_ascii、separators），GLM 与 Kimi 模板得以执行，而不是抛出 TypeError。"
+            }
+        }
+    ],
+
   "demo": {
     "title": {
       "en": "Run it on a complete example",
@@ -122,11 +133,20 @@
       "en": "Bundled specs and family names are repository fixtures, not verified upstream contracts.",
       "zh": "内置规范与系列名称是仓库样本，不是已经验证的上游约定。"
     },
-    {
-      "en": "The server probe goes through each platform's documented /tokenize + /detokenize endpoints and checks the server-rendered template text; it says nothing about live tool-call quality.",
-      "zh": "服务器探测走各平台公开的 /tokenize + /detokenize 端点，检查的是服务器渲染的模板文本，不能说明在线工具调用质量。"
-    }
-  ],
+        {
+            "en": "The server probe goes through each platform's documented /tokenize + /detokenize endpoints and checks the server-rendered template text; it says nothing about live tool-call quality.",
+            "zh": "服务器探测走各平台公开的 /tokenize + /detokenize 端点，检查的是服务器渲染的模板文本，不能说明在线工具调用质量。"
+        },
+        {
+            "en": "A template that cannot be rendered — it needs data the canonical cases do not carry, or the sandbox rejects it — is reported as an error naming the failing case, not as a diff.",
+            "zh": "无法渲染的模板（需要标准样本未携带的数据，或被沙箱拒绝）会以指明失败用例的错误报告，而不是给出差异。"
+        },
+        {
+            "en": "Canonical tool-call cases carry arguments as a JSON string; a template that iterates arguments as a mapping (GLM-4.5/4.6) cannot be rendered yet and reports that error.",
+            "zh": "标准工具调用样本的 arguments 是 JSON 字符串；把 arguments 当映射遍历的模板（GLM-4.5/4.6）暂无法渲染，会报告该错误。"
+        }
+    ],
+
   "scene": {
     "kind": "neon-graph",
     "fallback": "/assets/presentation/scene-dark.svg",
@@ -218,8 +238,9 @@
           "zh": "配置"
         },
         "body": {
-          "en": "Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server vllm|sglang renders each test case through the server's chat template via its /tokenize and /detokenize endpoints; --server-url overrides the default http://localhost:8000.",
-          "zh": "规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。--server vllm|sglang 经服务器的 /tokenize 与 /detokenize 端点渲染测试消息；--server-url 覆盖默认地址 http://localhost:8000。"
+                    "en": "Specifications live in src/templ8c/reference/specs.py. Template config input accepts a chat_template string or a list of named entries, using the first template in the latter form; when tokenizer_config.json has no usable chat_template (some releases ship it as null), --source falls back to the repo's chat_template.jinja and the Template source line names the file used. Remote helper methods fetch repository defaults rather than pinning an immutable revision; download a chosen revision locally when reproducibility matters. --server vllm|sglang renders each test case through the server's chat template via its /tokenize and /detokenize endpoints; --server-url overrides the default http://localhost:8000.",
+                    "zh": "规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板；若 tokenizer_config.json 没有可用的 chat_template（部分发布为 null），--source 会改用同一仓库的 chat_template.jinja，Template source 行报告实际使用的文件。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。--server vllm|sglang 经服务器的 /tokenize 与 /detokenize 端点渲染测试消息；--server-url 覆盖默认地址 http://localhost:8000。"
+
         }
       },
       {
