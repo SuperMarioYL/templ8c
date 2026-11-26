@@ -258,6 +258,83 @@ def test_render_with_tokenizer_config(tmp_path: Path) -> None:
     assert "CUSTOM-STARThelloCUSTOM-END" in result.output
 
 
+# -- prompt and diff text are data, not rich markup (v0.4.0 fix) -------------
+#
+# rich parses every plain string it prints as markup, so a prompt containing a
+# paired bracketed marker ([INST]...[/INST], Mistral/Llama-2 style) or a closing
+# tag without an opener ([/CALL_TOOL], this checker's own marker vocabulary when
+# a template is malformed) raised
+# "MarkupError: closing tag '...' doesn't match any open tag" out of the CLI.
+
+INST_TEMPLATE = "{% for m in messages %}[INST] {{ m['content'] }} [/INST]{% endfor %}"
+CLOSING_MARKER_TEMPLATE = (
+    "{% for m in messages %}<|user|>{{ m['content'] }}[/CALL_TOOL]{% endfor %}"
+)
+
+
+def test_render_prints_bracketed_prompt_verbatim(tmp_path: Path) -> None:
+    cfg = _write_tokenizer_config(tmp_path, INST_TEMPLATE)
+    result = runner.invoke(
+        app,
+        ["render", "--model", "qwen3.8", "--tokenizer-config", str(cfg), "--message", "hi"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "[INST] hi [/INST]" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_check_fail_table_prints_bracketed_snippet_verbatim(tmp_path: Path) -> None:
+    cfg = _write_tokenizer_config(tmp_path, CLOSING_MARKER_TEMPLATE)
+    result = runner.invoke(app, ["check", "--model", "glm-5.3", "--tokenizer-config", str(cfg)])
+    assert result.exit_code == 1
+    assert "FAIL" in result.output
+    assert "CALL_TOOL" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_error_message_with_closing_tag_is_not_markup() -> None:
+    """The --tokenizer-config error path embeds the user's path in the message."""
+    result = runner.invoke(
+        app, ["check", "--model", "qwen3.8", "--tokenizer-config", "/nonexistent[/x]/tok.json"]
+    )
+    assert result.exit_code == 1
+    assert "error" in _plain(result.output).lower()
+    assert "Traceback" not in result.output
+
+
+# -- local artifact resolution (v0.4.0 fixes) --------------------------------
+
+
+def test_check_local_artifact_falls_back_to_chat_template_jinja(tmp_path: Path) -> None:
+    """tokenizer_config.json with chat_template null + sibling chat_template.jinja
+    is the shape --source already handled; the local path must resolve it too."""
+    (tmp_path / "chat_template.jinja").write_text(get_spec("qwen3.8").template, encoding="utf-8")
+    cfg = tmp_path / "tokenizer_config.json"
+    cfg.write_text(json.dumps({"chat_template": None}), encoding="utf-8")
+
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--tokenizer-config", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert "Template source: chat_template.jinja (local:" in result.output
+    assert "PASS" in result.output
+
+
+def test_check_list_form_with_blank_first_entry_uses_the_usable_one(tmp_path: Path) -> None:
+    cfg = tmp_path / "tokenizer_config.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "chat_template": [
+                    {"name": "default", "template": ""},
+                    {"name": "tool_use", "template": get_spec("qwen3.8").template},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["check", "--model", "qwen3.8", "--tokenizer-config", str(cfg)])
+    assert result.exit_code == 0, result.output
+
+
 # -- --server probe -----------------------------------------------------------
 
 

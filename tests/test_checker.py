@@ -8,11 +8,24 @@ uses).
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from templ8c.checker import Checker, CheckResult
 from templ8c.comparator import FAIL, PASS, Comparator
-from templ8c.reference.specs import SPECS, SUPPORTED_MODELS, _ot, get_spec, normalize_model_id
+from templ8c.reference.specs import (
+    SPECS,
+    SUPPORTED_MODELS,
+    ConformanceSpec,
+    RenderRule,
+    _ot,
+    get_spec,
+    normalize_model_id,
+)
+from templ8c.reference.specs import (
+    TestCase as SpecTestCase,
+)
 from templ8c.render import Renderer
 from templ8c.template_loader import TemplateLoader
 
@@ -135,15 +148,13 @@ def test_comparator_flags_wrong_tool_call_wrapper() -> None:
 
 
 def test_comparator_unknown_field_fails() -> None:
-    from templ8c.reference.specs import ConformanceSpec, RenderRule, TestCase
-
     spec = ConformanceSpec(
         model_id="test",
         tool_call_wrapper="x",
         tool_call_json_schema={"keys": []},
         message_render_rules=[RenderRule("system", "S")],
         test_cases=[
-            TestCase(
+            SpecTestCase(
                 name="x",
                 messages=[{"role": "system", "content": "S"}],
                 fields=["bogus_field"],
@@ -154,6 +165,66 @@ def test_comparator_unknown_field_fails() -> None:
     diffs = Comparator().compare(spec, {"x": "anything"})
     assert diffs[0].status == FAIL
     assert diffs[0].actual == "unknown field"
+
+
+def _one_case_spec(
+    fields: list[str],
+    *,
+    messages: list[dict] | None = None,
+    keys: list[str] | None = None,
+    marker: str = "M",
+    wrapper: str = "W",
+) -> ConformanceSpec:
+    return ConformanceSpec(
+        model_id="test",
+        tool_call_wrapper=wrapper,
+        tool_call_json_schema={"keys": keys or []},
+        message_render_rules=[RenderRule("user", marker)],
+        test_cases=[
+            SpecTestCase(
+                name="case",
+                messages=messages or [{"role": "user", "content": "hi"}],
+                fields=fields,
+            )
+        ],
+        template="",
+    )
+
+
+# -- no vacuous PASS (v0.4.0 fix) ---------------------------------------------
+#
+# A check whose expectation is empty (no function name and no spec key, an
+# empty marker or an empty wrapper) verified nothing yet returned PASS, because
+# all()-over-nothing is True and "" in output is always True.
+
+
+def test_comparator_schema_without_expectations_fails() -> None:
+    spec = _one_case_spec(["tool_call_schema"])
+    diff = Comparator().compare(spec, {"case": ""})[0]
+    assert diff.status == FAIL
+    assert diff.actual != "all present"
+
+
+def test_comparator_schema_without_function_name_fails() -> None:
+    """A tool-call case whose call carries no function name has nothing to look for."""
+    spec = _one_case_spec(
+        ["tool_call_schema"],
+        messages=[{"role": "assistant", "content": "", "tool_calls": [{"function": {}}]}],
+    )
+    diff = Comparator().compare(spec, {"case": ""})[0]
+    assert diff.status == FAIL
+
+
+def test_comparator_empty_marker_fails() -> None:
+    spec = _one_case_spec(["user_marker"], marker="")
+    diff = Comparator().compare(spec, {"case": "anything"})[0]
+    assert diff.status == FAIL
+
+
+def test_comparator_empty_wrapper_fails() -> None:
+    spec = _one_case_spec(["tool_call_wrapper"], wrapper="")
+    diff = Comparator().compare(spec, {"case": "anything"})[0]
+    assert diff.status == FAIL
 
 
 # -- Checker (end to end) ---------------------------------------------------
@@ -187,6 +258,64 @@ def test_template_loader_from_string_passthrough() -> None:
 def test_template_loader_load_from_spec() -> None:
     spec = get_spec("qwen3.8")
     assert TemplateLoader().load_from_spec(spec) == spec.template
+
+
+# -- local artifact resolution (v0.4.0 fixes) ---------------------------------
+
+
+def test_load_from_local_falls_back_to_sibling_jinja(tmp_path) -> None:
+    """The remote loader falls back to the sibling chat_template.jinja when the
+    inline template is null; the local path must resolve the same artifact pair."""
+    template = get_spec("qwen3.8").template
+    (tmp_path / "chat_template.jinja").write_text(template, encoding="utf-8")
+    config = tmp_path / "tokenizer_config.json"
+    config.write_text(json.dumps({"chat_template": None}), encoding="utf-8")
+
+    loaded = TemplateLoader().load_from_local(config)
+    assert loaded.template == template
+    assert loaded.artifact == "chat_template.jinja"
+
+
+def test_load_from_local_reports_artifact_name(tmp_path) -> None:
+    config = tmp_path / "tokenizer_config.json"
+    config.write_text(json.dumps({"chat_template": "inline"}), encoding="utf-8")
+
+    loaded = TemplateLoader().load_from_local(config)
+    assert loaded.template == "inline"
+    assert loaded.artifact == "tokenizer_config.json"
+
+
+def test_load_from_local_without_inline_or_sibling_raises(tmp_path) -> None:
+    config = tmp_path / "tokenizer_config.json"
+    config.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="chat_template"):
+        TemplateLoader().load_from_local(config)
+
+
+def test_load_from_local_blank_sibling_raises(tmp_path) -> None:
+    (tmp_path / "chat_template.jinja").write_text(" \n", encoding="utf-8")
+    config = tmp_path / "tokenizer_config.json"
+    config.write_text(json.dumps({"chat_template": None}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="chat_template.jinja"):
+        TemplateLoader().load_from_local(config)
+
+
+def test_extract_chat_template_skips_blank_entries() -> None:
+    """A blank first entry must not shadow a later usable one."""
+    from templ8c.template_loader import _extract_chat_template
+
+    entries = [{"name": "default", "template": ""}, {"name": "tool_use", "template": "T"}]
+    assert _extract_chat_template({"chat_template": entries}) == "T"
+    assert _extract_chat_template({"chat_template": list(reversed(entries))}) == "T"
+
+
+def test_extract_chat_template_all_blank_entries_raise() -> None:
+    from templ8c.template_loader import _extract_chat_template
+
+    with pytest.raises(ValueError, match="chat_template"):
+        _extract_chat_template({"chat_template": [{"template": " "}, {"template": ""}]})
 
 
 # -- Renderer sandbox (v0.2.0 fix) --------------------------------------------

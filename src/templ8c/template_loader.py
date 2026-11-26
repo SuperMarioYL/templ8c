@@ -10,6 +10,8 @@ reference.
 A repo's template is read from the inline ``chat_template`` field of
 tokenizer_config.json, or - when that field is absent or null, as several CN
 model releases ship it - from the sibling ``chat_template.jinja`` artifact.
+The same pair works for a local download, so ``--tokenizer-config`` and
+``--source`` resolve an artifact the same way.
 """
 
 from __future__ import annotations
@@ -53,14 +55,36 @@ class TemplateLoader:
         """Pass through an already-loaded template string (used by tests)."""
         return source
 
+    def load_from_local(self, path: str | Path) -> LoadedTemplate:
+        """Read a local template artifact, preferring its inline template.
+
+        Mirrors the remote loader: a tokenizer_config.json that carries no
+        usable ``chat_template`` falls back to the sibling
+        ``chat_template.jinja`` next to it.
+        """
+        config_path = Path(path)
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        try:
+            return LoadedTemplate(_extract_chat_template(data), TOKENIZER_CONFIG)
+        except ValueError:
+            sibling = config_path.parent / CHAT_TEMPLATE_JINJA
+            if not sibling.is_file():
+                raise
+            template = sibling.read_text(encoding="utf-8")
+            if not template.strip():
+                raise ValueError(
+                    f"{CHAT_TEMPLATE_JINJA} next to {config_path.name} is empty"
+                ) from None
+            return LoadedTemplate(template, CHAT_TEMPLATE_JINJA)
+
     def load_from_tokenizer_config(self, path: str | Path) -> str:
         """Extract the ``chat_template`` field from a local tokenizer_config.json.
 
         Handles both the single-string form and the newer list-of-objects form
-        (``[{"name": ..., "template": "..."}]``) that some models ship.
+        (``[{"name": ..., "template": "..."}]``) that some models ship, and
+        falls back to the sibling ``chat_template.jinja`` like the remote loader.
         """
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return _extract_chat_template(data)
+        return self.load_from_local(path).template
 
     def load_from_hf(self, repo_id: str) -> str:
         """Fetch the chat template from a HuggingFace repo."""
@@ -109,10 +133,17 @@ def _extract_chat_template(data: object) -> str:
 
 
 def _first_template_entry(entries: list) -> str | None:
-    """The first usable template from the list-of-objects ``chat_template`` form."""
+    """The first usable template from the list-of-objects ``chat_template`` form.
+
+    A blank entry does not shadow a later non-blank one; entry position alone
+    must not decide whether the config is usable.
+    """
     for entry in entries:
-        if isinstance(entry, dict) and isinstance(entry.get("template"), str):
-            return entry["template"]
+        if not isinstance(entry, dict):
+            continue
+        template = entry.get("template")
+        if isinstance(template, str) and template.strip():
+            return template
     return None
 
 

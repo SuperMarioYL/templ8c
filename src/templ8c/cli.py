@@ -21,6 +21,7 @@ import httpx
 import typer
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from . import __version__
 from .checker import Checker
@@ -56,7 +57,9 @@ def main(
 
 
 def _fail(message: str) -> None:
-    console.print(f"[red]error:[/red] {message}")
+    # The message can quote a path, a ref or a template error, so it is printed
+    # as text: rich would otherwise parse bracketed content as markup.
+    console.print(Text.assemble(("error: ", "red"), message))
     raise typer.Exit(code=1)
 
 
@@ -74,10 +77,10 @@ def _load_template_option(
     loader = TemplateLoader()
     if tokenizer_config is not None:
         try:
-            template = loader.load_from_tokenizer_config(tokenizer_config)
+            loaded = loader.load_from_local(tokenizer_config)
         except (OSError, ValueError) as exc:
             _fail(f"failed to load {tokenizer_config}: {exc}")
-        return template, f"tokenizer_config.json (local: {tokenizer_config})"
+        return loaded.template, f"{loaded.artifact} (local: {tokenizer_config})"
 
     if source is not None:
         scheme, sep, ref = source.partition(":")
@@ -118,11 +121,14 @@ def render(
         out = Checker().render(model, message, template_source=template)
     except ValueError as exc:
         _fail(str(exc))
-    console.print(out)
+    # A prompt is data: print it verbatim rather than as rich markup, or a
+    # template emitting "[INST] ... [/INST]" (or any paired bracketed marker)
+    # crashes on the reporting path.
+    console.print(Text(out))
 
 
 def _print_result_table(result, title: str) -> None:
-    console.print(f"[bold]{title}[/bold]")
+    console.print(Text(title, style="bold"))
     table = Table(show_header=True, header_style="bold cyan", expand=True)
     table.add_column("Field")
     table.add_column("Expected")
@@ -131,10 +137,10 @@ def _print_result_table(result, title: str) -> None:
     for diff in result.diffs:
         style = "green" if diff.status == "PASS" else "red"
         table.add_row(
-            diff.field,
-            diff.expected,
-            diff.actual,
-            f"[{style}]{diff.status}[/{style}]",
+            Text(diff.field),
+            Text(diff.expected),
+            Text(diff.actual),
+            Text(diff.status, style=style),
         )
     console.print(table)
     if result.failed_count:
@@ -183,9 +189,13 @@ def check(
         _fail(str(exc))
 
     console.print()
-    console.print(f"[bold]templ8c v{__version__}[/bold] - chat template conformance checker")
-    console.print(f"Model: [cyan]{result.model_id}[/cyan]")
-    console.print(f"Template source: {template_desc}")
+    console.print(
+        Text.assemble(
+            (f"templ8c v{__version__}", "bold"), " - chat template conformance checker"
+        )
+    )
+    console.print(Text.assemble("Model: ", (result.model_id, "cyan")))
+    console.print(Text.assemble("Template source: ", template_desc))
     _print_result_table(result, "Template check")
     failed = result.failed_count
 
@@ -196,7 +206,7 @@ def check(
         except ProbeError as exc:
             _fail(str(exc))
         console.print()
-        console.print(f"Server probe: {server} @ {probe.base_url}")
+        console.print(Text(f"Server probe: {server} @ {probe.base_url}"))
         _print_result_table(server_result, "Server check")
         failed += server_result.failed_count
 

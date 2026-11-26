@@ -101,7 +101,7 @@ Python 本地产物用法为 source = TemplateLoader().load_from_tokenizer_confi
 
 ## 配置
 
-规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个模板；若 tokenizer_config.json 没有可用的 chat_template（部分发布为 null），`--source` 会改用同一仓库的 chat_template.jinja，`Template source:` 行报告实际使用的文件。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。`--server vllm|sglang` 将标准测试消息经服务器的 `/tokenize`（messages 形式，应用服务器 chat template）与 `/detokenize` 端点渲染为 prompt，再与同一规范比较；默认地址 `http://localhost:8000`，可用 `--server-url` 覆盖。模板加载失败、拉取失败或探测失败都以非零退出码报错。
+规范位于 src/templ8c/reference/specs.py。输入接受 chat_template 字符串或命名条目列表，列表形式取第一个**可用**的模板（空白条目不会遮蔽后续条目）；若 tokenizer_config.json 没有可用的 chat_template（部分发布为 null），无论用 `--source` 还是 `--tokenizer-config` 都会回退到同级的 chat_template.jinja，`Template source:` 行报告实际使用的文件。远程辅助方法获取仓库默认版本，不固定不可变修订；需要可复现时可先下载指定版本到本地。`--server vllm|sglang` 将标准测试消息经服务器的 `/tokenize`（messages 形式，应用服务器 chat template）与 `/detokenize` 端点渲染为 prompt，再与同一规范比较；默认地址 `http://localhost:8000`，可用 `--server-url` 覆盖。模板加载失败、拉取失败或探测失败都以非零退出码报错。渲染出的 prompt 与差异表格按原文输出，不按富文本标记解释。
 
 ## 集成与职责分工
 

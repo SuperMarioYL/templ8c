@@ -92,6 +92,10 @@ class Comparator:
         rule = next((r for r in spec.message_render_rules if r.role == role), None)
         if rule is None:
             return TemplateDiff(field, f"rule for {role}", "no rule defined", FAIL)
+        if not rule.marker:
+            # An empty expected marker is a substring of every output, so this
+            # check could never fail; report it instead of passing it.
+            return TemplateDiff(field, f"rule for {role}", "no marker defined in the spec", FAIL)
         found = rule.marker in output
         return TemplateDiff(
             field=field,
@@ -101,6 +105,13 @@ class Comparator:
         )
 
     def _check_wrapper(self, spec: ConformanceSpec, output: str) -> TemplateDiff:
+        if not spec.tool_call_wrapper:
+            return TemplateDiff(
+                "tool_call_wrapper",
+                "(wrapper token)",
+                "no tool-call wrapper defined in the spec",
+                FAIL,
+            )
         found = spec.tool_call_wrapper in output
         return TemplateDiff(
             field="tool_call_wrapper",
@@ -117,13 +128,21 @@ class Comparator:
     ) -> TemplateDiff:
         names = _function_names(case)
         keys = spec.tool_call_json_schema.get("keys", [])
-        present = all(name in output for name in names) and all(key in output for key in keys)
-        expected = ",".join([*names, *keys]) if (names or keys) else "(function name)"
+        expected = [*names, *keys]
+        if not expected:
+            # Nothing to look for: all()-over-nothing would PASS any output.
+            return TemplateDiff(
+                "tool_call_schema",
+                "(function name)",
+                "no expected function name or JSON key to check",
+                FAIL,
+            )
+        missing = [item for item in expected if item not in output]
         return TemplateDiff(
             field="tool_call_schema",
-            expected=expected,
-            actual="all present" if present else _snippet(output),
-            status=PASS if present else FAIL,
+            expected=",".join(expected),
+            actual="all present" if not missing else _snippet(output),
+            status=FAIL if missing else PASS,
         )
 
 

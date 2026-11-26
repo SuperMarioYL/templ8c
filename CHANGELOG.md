@@ -6,6 +6,53 @@ All notable changes to templ8c are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
+### Fixed
+
+- **Prompt and diff text is printed as data, not rich markup.** `render` printed
+  the rendered prompt with `console.print(out)` and the result table passed
+  `field` / `expected` / `actual` straight to `Table.add_row`, so rich parsed
+  all of it. A prompt containing a paired bracketed marker — the canonical
+  Mistral/Llama-2 `[INST] … [/INST]` form — or a closing tag such as
+  `[/CALL_TOOL]` (this checker's own marker vocabulary, reached exactly when a
+  template is malformed) raised
+  `MarkupError: closing tag '...' doesn't match any open tag` and killed the
+  command with a traceback right where it should report the diff. The prompt,
+  every table cell, the model/source/probe lines and the `error:` message are
+  now built as `rich.text.Text`; only static labels keep styling, so previously
+  working output is textually unchanged.
+- **`--tokenizer-config` resolves the same artifact pair as `--source`.** The
+  loader documented that a template is read from the inline `chat_template`
+  field or, when that is absent or null, from the sibling
+  `chat_template.jinja` — and the remote loader did exactly that — but the local
+  loader decoded only the one file it was handed. A local download of a
+  GLM-4.5/4.6 or Kimi-K2 style release (`chat_template: null` plus
+  `chat_template.jinja`) therefore could not be checked offline at all.
+  `TemplateLoader.load_from_local` now performs the same fallback and reports
+  which file held the template; `load_from_tokenizer_config` delegates to it.
+- **A blank list entry no longer shadows a usable `chat_template` entry.** The
+  list-of-objects form returned the first entry whose `template` was a string,
+  including `""`, after which the whole config was rejected as having "no usable
+  'chat_template' field" — so entry order alone decided whether a config could
+  be read. `_first_template_entry` now returns the first entry with non-blank
+  content.
+- **A check that verifies nothing is a FAIL, not a PASS.** `tool_call_schema`
+  computed `all(...) and all(...)` over the expected function names and JSON
+  keys; with neither present (a case that declares the field but carries no
+  tool call, plus a spec whose `keys` is empty — the bundled GLM spec is
+  `{"format": "calltool", "keys": []}`) both `all()` calls were vacuously true
+  and the field PASSed on empty output. An empty expected marker or wrapper had
+  the same shape, since `""` is a substring of every output. All three now
+  report a FAIL naming the missing expectation; the bundled specs carry
+  non-empty expectations, so their results are unchanged.
+
+### Changed
+
+- README and site prose now state that local and remote artifacts resolve the
+  same way, that the list form takes the first *usable* template, and that
+  rendered prompts are printed verbatim.
+
 ## [0.3.0] - 2026-10-22
 
 ### Fixed
@@ -89,7 +136,8 @@ Qwen3.8 and DeepSeek-V4; template-only `check` / `render` / `models` CLI with
 field-level PASS/FAIL diffs; TemplateLoader with local tokenizer_config.json
 extraction and HuggingFace/ModelScope fetch helpers (Python API).
 
-[Unreleased]: https://github.com/SuperMarioYL/templ8c/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SuperMarioYL/templ8c/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/SuperMarioYL/templ8c/releases/tag/v0.4.0
 [0.3.0]: https://github.com/SuperMarioYL/templ8c/releases/tag/v0.3.0
 [0.2.0]: https://github.com/SuperMarioYL/templ8c/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SuperMarioYL/templ8c/releases/tag/v0.1.0
