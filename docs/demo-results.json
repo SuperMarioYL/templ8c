@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "source_revision": "dff5fd76fa72da0cb553e0227e53df5fa2820dc1",
+  "source_revision": "1e87bd79228b16592386daf6567219a83e827ac7",
   "scope": "Bundled reference template loaded through local tokenizer_config JSON and compared before/after a deliberate wrapper removal.",
   "steps": [
     {
